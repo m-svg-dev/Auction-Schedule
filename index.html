@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ギルドオークション管理</title>
+<link rel="stylesheet" href="style.css?v=1.0.0">
+</head>
+<body>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- 認証画面 -->
+<div id="auth-container">
+  <div class="auth-box">
+    <h1 class="brand">⚔ ギルドオークション管理</h1>
+
+    <section id="view-register" class="auth-view">
+      <h2>新規登録</h2>
+      <form id="form-register">
+        <label>ギルド名<input type="text" id="register-guild-name" required></label>
+        <label>パスワード<input type="password" id="register-password" required></label>
+        <button type="submit" class="btn-primary">登録する</button>
+      </form>
+      <p class="switch-link">既にギルドをお持ちですか？ <a href="#" data-go="login">ログインへ</a></p>
+    </section>
+
+    <section id="view-login" class="auth-view hidden">
+      <h2>ログイン</h2>
+      <form id="form-login">
+        <label>ギルド名<input type="text" id="login-guild-name" required></label>
+        <label>パスワード<input type="password" id="login-password" required></label>
+        <button type="submit" class="btn-primary">ログイン</button>
+      </form>
+      <p class="switch-link">ギルドが未登録ですか？ <a href="#" data-go="register">新規登録へ</a></p>
+    </section>
+
+    <section id="view-role-select" class="auth-view hidden">
+      <h2>役割を選択</h2>
+      <div class="role-buttons">
+        <button id="role-admin-btn" class="btn-role">管理者として入る</button>
+        <button id="role-member-btn" class="btn-role">メンバーとして入る</button>
+      </div>
+    </section>
+
+    <section id="view-member-select" class="auth-view hidden">
+      <h2>あなたの名前を選択</h2>
+      <div id="member-select-list" class="member-select-list"></div>
+    </section>
+  </div>
+</div>
+
+<!-- アプリ本体 -->
+<div id="app-container" class="hidden">
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1 id="guild-name-display"></h1>
+      <span id="role-display" class="role-badge"></span>
+    </div>
+    <nav id="sidebar-nav"></nav>
+    <button id="logout-btn" class="btn-logout">ログアウト</button>
+  </aside>
+
+  <main id="content-area">
+
+    <!-- 管理者：ダッシュボード -->
+    <section id="view-admin-dashboard" class="view hidden">
+      <h2>ダッシュボード</h2>
+      <div id="dashboard-cards" class="card-grid"></div>
+    </section>
+
+    <!-- 管理者：メンバー管理 -->
+    <section id="view-member-management" class="view hidden">
+      <h2>メンバー管理</h2>
+      <form id="form-add-member" class="inline-form">
+        <input type="text" id="new-member-name" placeholder="メンバー名" required>
+        <button type="submit" class="btn-primary">追加</button>
+      </form>
+      <p class="hint">ドラッグして入札順を並び替えできます。</p>
+      <ul id="member-list" class="sortable-list"></ul>
+    </section>
+
+    <!-- 管理者：アイテム管理 -->
+    <section id="view-item-management" class="view hidden">
+      <h2>オークションアイテム管理</h2>
+      <form id="form-add-item" class="inline-form">
+        <input type="text" id="new-item-name" placeholder="アイテム名" required>
+        <input type="number" id="new-item-slots" placeholder="枠数" min="1" value="1" required>
+        <input type="number" id="new-item-priority" placeholder="優先順位" min="1" value="1" required>
+        <button type="submit" class="btn-primary">追加</button>
+      </form>
+      <table class="data-table">
+        <thead><tr><th>アイテム名</th><th>枠数</th><th>優先順位</th><th></th></tr></thead>
+        <tbody id="item-table-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 管理者：イン不可管理 -->
+    <section id="view-unavailable-management" class="view hidden">
+      <h2>イン不可管理</h2>
+      <form id="form-add-unavailable" class="inline-form">
+        <select id="unavailable-member"></select>
+        <input type="text" id="unavailable-week" placeholder="例: 2026-W27" required>
+        <input type="text" id="unavailable-reason" placeholder="理由（任意）">
+        <button type="submit" class="btn-primary">登録</button>
+      </form>
+      <table class="data-table">
+        <thead><tr><th>メンバー</th><th>対象週</th><th>理由</th><th></th></tr></thead>
+        <tbody id="unavailable-table-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 管理者：自動割り当て -->
+    <section id="view-auto-assign" class="view hidden">
+      <h2>自動割り当て</h2>
+      <form id="form-auto-assign" class="inline-form">
+        <label>対象週 <input type="text" id="assign-week" placeholder="例: 2026-W27" required></label>
+        <button type="submit" class="btn-primary">割り当てを実行</button>
+      </form>
+      <table class="data-table">
+        <thead><tr><th>アイテム枠</th><th>担当</th><th>繰り越し</th></tr></thead>
+        <tbody id="assign-result-body"></tbody>
+      </table>
+    </section>
+
+    <!-- カレンダー（管理者・メンバー共通） -->
+    <section id="view-calendar" class="view hidden">
+      <h2>カレンダー</h2>
+      <div class="week-nav">
+        <button id="calendar-prev" class="btn-secondary">← 前週</button>
+        <span id="calendar-week-label"></span>
+        <button id="calendar-next" class="btn-secondary">次週 →</button>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>週</th><th>アイテム</th><th>枠番号</th><th>担当</th></tr></thead>
+        <tbody id="calendar-table-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 管理者：メンバー検索 -->
+    <section id="view-member-search" class="view hidden">
+      <h2>メンバー検索</h2>
+      <input type="text" id="search-input" placeholder="メンバー名で検索">
+      <table class="data-table">
+        <thead><tr><th>週</th><th>アイテム</th><th>枠</th></tr></thead>
+        <tbody id="search-result-body"></tbody>
+      </table>
+    </section>
+
+    <!-- メンバー：ホーム -->
+    <section id="view-member-home" class="view hidden">
+      <h2>自分の予定</h2>
+      <div id="member-home-cards" class="card-grid"></div>
+      <h3>今後の担当一覧</h3>
+      <table class="data-table">
+        <thead><tr><th>週</th><th>アイテム</th><th>枠</th></tr></thead>
+        <tbody id="member-home-table-body"></tbody>
+      </table>
+    </section>
+
+    <!-- メンバー：イン不可申請 -->
+    <section id="view-member-unavailable-request" class="view hidden">
+      <h2>イン不可申請</h2>
+      <form id="form-member-unavailable" class="inline-form">
+        <input type="text" id="member-unavailable-week" placeholder="例: 2026-W27" required>
+        <input type="text" id="member-unavailable-reason" placeholder="理由（任意）">
+        <button type="submit" class="btn-primary">申請する</button>
+      </form>
+      <table class="data-table">
+        <thead><tr><th>対象週</th><th>理由</th><th></th></tr></thead>
+        <tbody id="member-unavailable-table-body"></tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<script type="module" src="js/app.js?v=1.0.0"></script>
+</body>
+</html>
