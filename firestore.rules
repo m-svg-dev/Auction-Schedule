@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// MVP向けの簡易ルール。
+// このアプリは Firebase Authentication を使わず、ギルド名+パスワードによる
+// 簡易ログインをアプリ側（クライアント）で検証する設計のため、
+// Firestore のルールではユーザーを識別できません。
+// そのため guilds コレクションは「ギルド名を知っている人なら誰でも読み書き可能」になります。
+// パスワードは平文ではなく SHA-256 ハッシュで保存していますが、
+// メンバー一覧やオークション結果などのデータ自体は保護されません。
+// より高いセキュリティが必要になった場合は、Firebase Authentication（匿名認証 + カスタムクレーム等）
+// と組み合わせた設計への移行を検討してください。
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /guilds/{guildId} {
+      allow read, write: if true;
+    }
+  }
+}

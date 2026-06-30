@@ -1,108 +1,49 @@
-// 入札担当のローテーション割り当てアルゴリズム
-// 基本ルール：
-// - メンバー登録順に巡回（rotationPointerで次の担当開始位置を保持）
-// - イン不可のメンバーはその週スキップし、carryOversへ繰り越す
-// - 繰り越し対象者は次回最優先
-// - 直前の担当者と同じ人は可能な限り避ける（他に候補がなければ許可）
+// 入札担当の自動割り当てアルゴリズム（希望アイテム順位ベース）
+//
+// 各メンバーは「欲しいアイテムの順位」(wishlist) を持つ。
+// アイテムごとに、それを希望しているメンバーを希望順位の高い順（同順位はメンバー登録順）に
+// 並べた待ち行列を作り、そのアイテムの枠数ぶんずつ毎週ローテーションで割り当てる。
+// このローテーションはアイテムごとに完全に独立しており、同じ週に同じメンバーが
+// 複数アイテムへ重複して割り当てられることもそのまま許容する。
+// イン不可のメンバーが順番に来た場合はその週だけスキップし、次の希望者へ進める。
 export function generateWeekAssignments(guild, week) {
-  const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
   const items = [...guild.items].sort((a, b) => a.priority - b.priority);
-
-  if (members.length === 0 || items.length === 0) {
-    return {
-      assignments: [],
-      updatedCarryOvers: guild.carryOvers,
-      updatedPointer: guild.rotationPointer || 0,
-      updatedLastAssigned: guild.lastAssignedMember || null,
-    };
-  }
-
-  const n = members.length;
+  const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
   const unavailableSet = new Set(
     guild.unavailableWeeks.filter(u => u.week === week).map(u => u.memberName)
   );
 
-  const slots = [];
-  for (const item of items) {
-    for (let s = 1; s <= item.slotCount; s++) {
-      slots.push({ itemName: item.itemName, slotNo: s });
-    }
-  }
-
-  let carryOverQueue = guild.carryOvers.map(c => ({ ...c }));
-  let pointer = guild.rotationPointer || 0;
-  let lastAssigned = guild.lastAssignedMember || null;
-  const assignedThisWeek = new Set();
+  const pointers = { ...(guild.itemRotationPointers || {}) };
   const result = [];
 
-  for (const slot of slots) {
-    // 1. 繰り越し対象者を最優先で確認
-    let carryIdx = -1;
-    let carryFallbackIdx = -1;
-    for (let i = 0; i < carryOverQueue.length; i++) {
-      const cand = carryOverQueue[i].memberName;
-      if (unavailableSet.has(cand) || assignedThisWeek.has(cand)) continue;
-      if (cand === lastAssigned) {
-        if (carryFallbackIdx === -1) carryFallbackIdx = i;
-        continue;
-      }
-      carryIdx = i;
-      break;
-    }
-    if (carryIdx === -1) carryIdx = carryFallbackIdx;
+  for (const item of items) {
+    const queue = guild.wishlists
+      .filter(w => w.itemName === item.itemName)
+      .sort((a, b) => a.rank - b.rank || (memberOrder.get(a.memberName) ?? 0) - (memberOrder.get(b.memberName) ?? 0))
+      .map(w => w.memberName);
 
-    if (carryIdx !== -1) {
-      const memberName = carryOverQueue[carryIdx].memberName;
-      carryOverQueue.splice(carryIdx, 1);
-      assignedThisWeek.add(memberName);
-      result.push({ week, itemName: slot.itemName, slotNo: slot.slotNo, memberName, isCarryOver: true });
-      lastAssigned = memberName;
+    if (queue.length === 0) {
+      for (let s = 1; s <= item.slotCount; s++) {
+        result.push({ week, itemName: item.itemName, slotNo: s, memberName: null, isCarryOver: false });
+      }
       continue;
     }
 
-    // 2. 通常ローテーションから探索
-    let foundIdx = -1;
-    let fallbackIdx = -1;
-    for (let step = 0; step < n; step++) {
-      const idx = (pointer + step) % n;
-      const m = members[idx];
-      if (assignedThisWeek.has(m.name) || unavailableSet.has(m.name)) continue;
-      if (m.name === lastAssigned) {
-        if (fallbackIdx === -1) fallbackIdx = idx;
-        continue;
+    let pointer = pointers[item.itemName] || 0;
+    for (let s = 1; s <= item.slotCount; s++) {
+      let assigned = null;
+      for (let attempt = 0; attempt < queue.length; attempt++) {
+        const idx = (pointer + attempt) % queue.length;
+        if (!unavailableSet.has(queue[idx])) {
+          assigned = queue[idx];
+          pointer = idx + 1;
+          break;
+        }
       }
-      foundIdx = idx;
-      break;
+      result.push({ week, itemName: item.itemName, slotNo: s, memberName: assigned, isCarryOver: false });
     }
-    if (foundIdx === -1) foundIdx = fallbackIdx;
-
-    if (foundIdx === -1) {
-      // 割り当て可能な人がいない（全員イン不可または既に割当済み）
-      result.push({ week, itemName: slot.itemName, slotNo: slot.slotNo, memberName: null, isCarryOver: false });
-      continue;
-    }
-
-    // pointerからfoundIdxまでの間でイン不可によりスキップされた人を繰り越しへ
-    for (let step = 0; step < n; step++) {
-      const idx = (pointer + step) % n;
-      if (idx === foundIdx) break;
-      const m = members[idx];
-      if (unavailableSet.has(m.name) && !carryOverQueue.some(c => c.memberName === m.name)) {
-        carryOverQueue.push({ memberName: m.name, originalWeek: week });
-      }
-    }
-
-    const memberName = members[foundIdx].name;
-    assignedThisWeek.add(memberName);
-    result.push({ week, itemName: slot.itemName, slotNo: slot.slotNo, memberName, isCarryOver: false });
-    lastAssigned = memberName;
-    pointer = (foundIdx + 1) % n;
+    pointers[item.itemName] = pointer % queue.length;
   }
 
-  return {
-    assignments: result,
-    updatedCarryOvers: carryOverQueue,
-    updatedPointer: pointer,
-    updatedLastAssigned: lastAssigned,
-  };
+  return { assignments: result, updatedPointers: pointers };
 }

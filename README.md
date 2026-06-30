@@ -6,23 +6,37 @@ URLを共有するだけで各ギルドが利用できます。
 ## 技術構成
 
 - HTML / CSS / JavaScript（Vanilla JS, `type="module"`）
-- データ保存は `localStorage`（ギルドごとに分離して保存）
-- 将来的に Firebase Authentication + Firestore へ移行しやすいよう、データ操作はすべて [js/storage.js](js/storage.js) に関数化しています
+- データベース：**Firebase Firestore**（ギルド単位でドキュメントを分離して保存。複数端末・複数人でURLを共有して利用できます）
+- 認証：簡易ログイン（ギルド名 + パスワード。Firebase Authenticationは未使用）
+- `localStorage` は「最後にログインしたギルド名」など端末固有の補助情報のみに使用（メインデータには使用しません）
 
 ```text
 /
 ├── index.html
 ├── style.css
 ├── README.md
+├── firestore.rules        … Firestore セキュリティルール（Firebaseコンソールに貼り付ける）
 ├── assets/
 └── js/
-    ├── app.js        … 画面遷移・イベント処理
-    ├── storage.js     … localStorage CRUD（データ層）
-    ├── rotation.js    … 入札担当の自動割り当てアルゴリズム
-    └── calendar.js    … ISO週番号(YYYY-Www)計算
+    ├── app.js              … 画面遷移・イベント処理
+    ├── firebase-config.js  … Firebase初期化設定（要：自分のプロジェクトの値に書き換え）
+    ├── storage.js          … Firestore CRUD（データ層）
+    ├── rotation.js         … 入札担当の自動割り当てアルゴリズム
+    └── calendar.js         … ISO週番号(YYYY-Www)計算
 ```
 
 ## セットアップ方法
+
+### 1. Firebaseプロジェクトの準備
+
+1. https://console.firebase.google.com で新規プロジェクトを作成
+2. 左メニュー「Firestore Database」を開き、データベースを作成（リージョンは任意、本番モードでOK）
+3. 「Firestore Database」→「ルール」タブを開き、[firestore.rules](firestore.rules) の内容を貼り付けて公開
+4. プロジェクト設定（歯車アイコン）→「マイアプリ」→ウェブアプリ（`</>`）を追加し、表示された `firebaseConfig` の値を [js/firebase-config.js](js/firebase-config.js) の該当箇所に貼り付ける
+
+> `apiKey` などの値はサーバーの秘密鍵ではなく、Webアプリ識別用の公開値です。公開リポジトリにコミットしても問題ありません。
+
+### 2. アプリの起動
 
 ビルド不要です。リポジトリをクローンして、静的ファイルとして配信するだけで動作します。
 
@@ -58,8 +72,12 @@ python -m http.server 8000   # 例：簡易サーバーで起動
 - イン不可のメンバーはその週スキップし、次回最優先で繰り越し
 - 同じ人が連続で割り当てられることは可能な限り回避（他に候補がいない場合のみ例外的に許可）
 
-## 将来拡張（Firebase対応）
+## セキュリティ上の注意（MVP時点の制約）
 
-`js/storage.js` の関数群（`registerGuild` / `loginGuild` / `addMember` など）を
-Firebase Authentication + Firestore を使った実装に差し替えるだけで、
-複数端末同期・本格的な認証に対応できる構成にしています。
+このアプリは Firebase Authentication を使わず、ギルド名+パスワードによる簡易ログインを
+クライアント側で検証する設計です（パスワードは平文ではなく SHA-256 ハッシュで保存）。
+そのため [firestore.rules](firestore.rules) は「ギルド名を知っている人なら誰でも読み書き可能」な
+オープンなルールになっており、メンバー一覧やオークション結果などのデータ自体は保護されません。
+
+より強固なアクセス制御が必要になった場合は、Firebase Authentication（匿名認証 + カスタムクレーム等）や
+Cloud Functions 経由の検証レイヤーへの移行を検討してください。

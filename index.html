@@ -8,7 +8,7 @@
 </head>
 <body>
 
-<div id="toast" class="toast hidden"></div>
+<div id="toast" class="toast"></div>
 
 <!-- 認証画面 -->
 <div id="auth-container">
@@ -36,6 +36,7 @@
     </section>
 
     <section id="view-role-select" class="auth-view hidden">
+      <a href="#" class="back-link" data-go="login">← ログインに戻る</a>
       <h2>役割を選択</h2>
       <div class="role-buttons">
         <button id="role-admin-btn" class="btn-role">管理者として入る</button>
@@ -44,6 +45,7 @@
     </section>
 
     <section id="view-member-select" class="auth-view hidden">
+      <a href="#" class="back-link" data-go="role-select">← 役割選択に戻る</a>
       <h2>あなたの名前を選択</h2>
       <div id="member-select-list" class="member-select-list"></div>
     </section>
@@ -83,10 +85,11 @@
     <!-- 管理者：アイテム管理 -->
     <section id="view-item-management" class="view hidden">
       <h2>オークションアイテム管理</h2>
+      <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。「優先順位」は数字が小さいほど自動割り当てで先に処理されます（通常は1のままでOK）。</p>
       <form id="form-add-item" class="inline-form">
         <input type="text" id="new-item-name" placeholder="アイテム名" required>
-        <input type="number" id="new-item-slots" placeholder="枠数" min="1" value="1" required>
-        <input type="number" id="new-item-priority" placeholder="優先順位" min="1" value="1" required>
+        <label>枠数 <input type="number" id="new-item-slots" min="1" value="1" required></label>
+        <label>優先順位 <input type="number" id="new-item-priority" min="1" value="1" required></label>
         <button type="submit" class="btn-primary">追加</button>
       </form>
       <table class="data-table">
@@ -95,12 +98,27 @@
       </table>
     </section>
 
+    <!-- 管理者：希望アイテム管理 -->
+    <section id="view-wishlist-management" class="view hidden">
+      <h2>希望アイテム管理</h2>
+      <p class="hint">メンバーを選んで、欲しいアイテムを希望順位の高い順に登録します。ドラッグで順位を入れ替えできます。</p>
+      <div class="inline-form">
+        <label>メンバー <select id="wishlist-member-select"></select></label>
+      </div>
+      <form id="form-add-wishlist-item" class="inline-form">
+        <select id="wishlist-item-select"></select>
+        <button type="submit" class="btn-primary">追加</button>
+      </form>
+      <ul id="wishlist-list" class="sortable-list"></ul>
+    </section>
+
     <!-- 管理者：イン不可管理 -->
     <section id="view-unavailable-management" class="view hidden">
       <h2>イン不可管理</h2>
+      <p class="hint">メンバーがオークションに参加できない週を登録します。自動割り当てを実行するとき、登録された週はそのメンバーをスキップします。</p>
       <form id="form-add-unavailable" class="inline-form">
-        <select id="unavailable-member"></select>
-        <input type="text" id="unavailable-week" placeholder="例: 2026-W27" required>
+        <label>メンバー <select id="unavailable-member"></select></label>
+        <label>対象週 <input type="week" id="unavailable-week" required></label>
         <input type="text" id="unavailable-reason" placeholder="理由（任意）">
         <button type="submit" class="btn-primary">登録</button>
       </form>
@@ -113,8 +131,9 @@
     <!-- 管理者：自動割り当て -->
     <section id="view-auto-assign" class="view hidden">
       <h2>自動割り当て</h2>
+      <p class="hint">対象週を選んで実行すると、登録済みの希望アイテム順位とイン不可情報をもとに、その週の担当を自動で決めます。</p>
       <form id="form-auto-assign" class="inline-form">
-        <label>対象週 <input type="text" id="assign-week" placeholder="例: 2026-W27" required></label>
+        <label>対象週 <input type="week" id="assign-week" required></label>
         <button type="submit" class="btn-primary">割り当てを実行</button>
       </form>
       <table class="data-table">
@@ -161,8 +180,9 @@
     <!-- メンバー：イン不可申請 -->
     <section id="view-member-unavailable-request" class="view hidden">
       <h2>イン不可申請</h2>
+      <p class="hint">自分がオークションに参加できない週を申請します。申請した週は自動割り当てであなたがスキップされます。</p>
       <form id="form-member-unavailable" class="inline-form">
-        <input type="text" id="member-unavailable-week" placeholder="例: 2026-W27" required>
+        <label>対象週 <input type="week" id="member-unavailable-week" required></label>
         <input type="text" id="member-unavailable-reason" placeholder="理由（任意）">
         <button type="submit" class="btn-primary">申請する</button>
       </form>
