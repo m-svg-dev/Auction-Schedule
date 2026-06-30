@@ -85,15 +85,14 @@
     <!-- 管理者：アイテム管理 -->
     <section id="view-item-management" class="view hidden">
       <h2>オークションアイテム管理</h2>
-      <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。「優先順位」は数字が小さいほど自動割り当てで先に処理されます（通常は1のままでOK）。</p>
+      <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。</p>
       <form id="form-add-item" class="inline-form">
         <input type="text" id="new-item-name" placeholder="アイテム名" required>
         <label>枠数 <input type="number" id="new-item-slots" min="1" value="1" required></label>
-        <label>優先順位 <input type="number" id="new-item-priority" min="1" value="1" required></label>
         <button type="submit" class="btn-primary">追加</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>アイテム名</th><th>枠数</th><th>優先順位</th><th></th></tr></thead>
+        <thead><tr><th>アイテム名</th><th>枠数</th><th></th></tr></thead>
         <tbody id="item-table-body"></tbody>
       </table>
     </section>

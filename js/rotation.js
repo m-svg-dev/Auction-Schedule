@@ -7,7 +7,7 @@
 // 複数アイテムへ重複して割り当てられることもそのまま許容する。
 // イン不可のメンバーが順番に来た場合はその週だけスキップし、次の希望者へ進める。
 export function generateWeekAssignments(guild, week) {
-  const items = [...guild.items].sort((a, b) => a.priority - b.priority);
+  const items = guild.items;
   const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
   const unavailableSet = new Set(
     guild.unavailableWeeks.filter(u => u.week === week).map(u => u.memberName)

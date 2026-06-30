@@ -49,6 +49,18 @@ async function withBusyButton(formEl, fn) {
   }
 }
 
+// 削除・並び替えなど、フォーム以外のボタン操作を同様に保護する
+// （失敗時に画面が固まったまま何も表示されない、という事態を防ぐ）
+async function withBusyAction(btn, fn) {
+  if (btn) btn.disabled = true;
+  try {
+    await fn();
+  } catch (err) {
+    showToast(err.message || '保存に失敗しました。通信状況を確認してもう一度お試しください');
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Firestore から最新のギルドデータを取得し直す
 async function refreshGuild() {
   currentGuild = await store.getGuild(session.guildName);
@@ -196,10 +208,14 @@ async function navigateTo(viewId) {
   });
   document.querySelectorAll('#content-area .view').forEach(el => el.classList.add('hidden'));
   $(`view-${viewId}`).classList.remove('hidden');
-  // 他端末での更新を反映するため、画面遷移のたびに最新データを取得する
-  await refreshGuild();
-  const renderer = RENDERERS[viewId];
-  if (renderer) await renderer();
+  try {
+    // 他端末での更新を反映するため、画面遷移のたびに最新データを取得する
+    await refreshGuild();
+    const renderer = RENDERERS[viewId];
+    if (renderer) await renderer();
+  } catch (err) {
+    showToast(err.message || 'データの取得に失敗しました。通信状況を確認してください');
+  }
 }
 
 // --- 管理者：ダッシュボード ---
@@ -267,12 +283,11 @@ function renderMemberManagement() {
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
     delBtn.textContent = '削除';
-    delBtn.addEventListener('click', async () => {
-      delBtn.disabled = true;
+    delBtn.addEventListener('click', () => withBusyAction(delBtn, async () => {
       await store.deleteMember(session.guildName, m.id);
       await refreshGuild();
       renderMemberManagement();
-    });
+    }));
     actions.appendChild(delBtn);
 
     li.appendChild(actions);
@@ -287,9 +302,13 @@ function renderMemberManagement() {
       const from = ids.indexOf(dragSourceId);
       const to = ids.indexOf(m.id);
       ids.splice(to, 0, ids.splice(from, 1)[0]);
-      await store.reorderMembers(session.guildName, ids);
-      await refreshGuild();
-      renderMemberManagement();
+      try {
+        await store.reorderMembers(session.guildName, ids);
+        await refreshGuild();
+        renderMemberManagement();
+      } catch (err) {
+        showToast(err.message || '並び替えに失敗しました');
+      }
     });
 
     list.appendChild(li);
@@ -320,14 +339,15 @@ function enterMemberEditMode(li, m) {
   cancelBtn.addEventListener('click', () => renderMemberManagement());
 
   form.append(input, saveBtn, cancelBtn);
-  form.addEventListener('submit', async e => {
+  form.addEventListener('submit', e => {
     e.preventDefault();
     const newName = input.value.trim();
     if (!newName) return;
-    saveBtn.disabled = true;
-    await store.updateMemberName(session.guildName, m.id, newName);
-    await refreshGuild();
-    renderMemberManagement();
+    withBusyAction(saveBtn, async () => {
+      await store.updateMemberName(session.guildName, m.id, newName);
+      await refreshGuild();
+      renderMemberManagement();
+    });
   });
 
   li.appendChild(form);
@@ -350,22 +370,19 @@ $('form-add-member').addEventListener('submit', e => {
 
 function renderItemManagement() {
   const guild = currentGuild;
-  const items = [...guild.items].sort((a, b) => a.priority - b.priority);
-  $('item-table-body').innerHTML = items.map(it => `
+  $('item-table-body').innerHTML = guild.items.map(it => `
     <tr>
       <td>${it.itemName}</td>
       <td>${it.slotCount}</td>
-      <td>${it.priority}</td>
       <td><button class="btn-danger" data-del-item="${it.id}">削除</button></td>
     </tr>
   `).join('');
   $('item-table-body').querySelectorAll('[data-del-item]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.deleteItem(session.guildName, btn.dataset.delItem);
       await refreshGuild();
       renderItemManagement();
-    });
+    }));
   });
 }
 
@@ -374,12 +391,10 @@ $('form-add-item').addEventListener('submit', e => {
   withBusyButton(e.target, async () => {
     const itemName = $('new-item-name').value.trim();
     const slotCount = parseInt($('new-item-slots').value, 10);
-    const priority = parseInt($('new-item-priority').value, 10);
-    if (!itemName || !slotCount || !priority) return;
-    await store.addItem(session.guildName, itemName, slotCount, priority);
+    if (!itemName || !slotCount) return;
+    await store.addItem(session.guildName, itemName, slotCount);
     $('form-add-item').reset();
     $('new-item-slots').value = 1;
-    $('new-item-priority').value = 1;
     await refreshGuild();
     renderItemManagement();
   });
@@ -440,12 +455,11 @@ function renderWishlistList() {
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
     delBtn.textContent = '削除';
-    delBtn.addEventListener('click', async () => {
-      delBtn.disabled = true;
+    delBtn.addEventListener('click', () => withBusyAction(delBtn, async () => {
       await store.removeWishlistItem(session.guildName, selectedWishlistMember, w.id);
       await refreshGuild();
       renderWishlistList();
-    });
+    }));
     li.appendChild(delBtn);
 
     li.addEventListener('dragstart', () => { wishlistDragSourceId = w.id; li.classList.add('dragging'); });
@@ -458,9 +472,13 @@ function renderWishlistList() {
       const from = ids.indexOf(wishlistDragSourceId);
       const to = ids.indexOf(w.id);
       ids.splice(to, 0, ids.splice(from, 1)[0]);
-      await store.reorderWishlist(session.guildName, selectedWishlistMember, ids);
-      await refreshGuild();
-      renderWishlistList();
+      try {
+        await store.reorderWishlist(session.guildName, selectedWishlistMember, ids);
+        await refreshGuild();
+        renderWishlistList();
+      } catch (err) {
+        showToast(err.message || '並び替えに失敗しました');
+      }
     });
 
     list.appendChild(li);
@@ -503,12 +521,11 @@ function renderUnavailableManagement() {
     </tr>
   `).join('');
   $('unavailable-table-body').querySelectorAll('[data-del-unavail]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.removeUnavailable(session.guildName, btn.dataset.delUnavail);
       await refreshGuild();
       renderUnavailableManagement();
-    });
+    }));
   });
 }
 
@@ -652,12 +669,11 @@ function renderMemberUnavailableRequest() {
       `).join('')
     : '<tr><td colspan="3">申請はありません</td></tr>';
   $('member-unavailable-table-body').querySelectorAll('[data-del-my-unavail]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.removeUnavailable(session.guildName, btn.dataset.delMyUnavail);
       await refreshGuild();
       renderMemberUnavailableRequest();
-    });
+    }));
   });
 }
 
@@ -681,15 +697,19 @@ async function init() {
   const lastGuildName = store.getLastGuildName();
   if (lastGuildName) $('login-guild-name').value = lastGuildName;
 
-  if (session && session.guildName && session.role) {
-    const guild = await store.getGuild(session.guildName);
-    const memberStillExists = session.role === 'admin'
-      || guild?.members.some(m => m.name === session.memberName);
-    if (guild && memberStillExists) {
-      currentGuild = guild;
-      await enterApp();
-      return;
+  try {
+    if (session && session.guildName && session.role) {
+      const guild = await store.getGuild(session.guildName);
+      const memberStillExists = session.role === 'admin'
+        || guild?.members.some(m => m.name === session.memberName);
+      if (guild && memberStillExists) {
+        currentGuild = guild;
+        await enterApp();
+        return;
+      }
     }
+  } catch (err) {
+    showToast(err.message || 'データの取得に失敗しました。通信状況を確認してください');
   }
   clearSession();
   showAuthView('view-login');

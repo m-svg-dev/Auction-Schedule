@@ -25,6 +25,19 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Firestore への通信が固まったまま応答が返らないと、ボタンが無効状態のまま戻らず
+// 「保存されたのか失敗したのか分からない」状態になる。一定時間で必ずエラーとして
+// 諦めることで、呼び出し元（app.js）が確実にエラー表示できるようにする。
+const FIRESTORE_TIMEOUT_MS = 15000;
+
+function withTimeout(promise) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('通信がタイムアウトしました。電波状況を確認してもう一度お試しください')), FIRESTORE_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function validateGuildName(guildName) {
   if (!guildName || guildName.includes('/') || guildName.length > 200) {
     throw new Error('ギルド名に使用できない文字が含まれています');
@@ -56,33 +69,33 @@ function normalizeGuild(data) {
 export async function registerGuild(guildName, password) {
   validateGuildName(guildName);
   const ref = guildDocRef(guildName);
-  const snap = await getDoc(ref);
+  const snap = await withTimeout(getDoc(ref));
   if (snap.exists()) {
     throw new Error('そのギルド名は既に登録されています');
   }
   const passwordHash = await hashPassword(password);
-  await setDoc(ref, createEmptyGuild(guildName, passwordHash));
+  await withTimeout(setDoc(ref, createEmptyGuild(guildName, passwordHash)));
 }
 
 export async function loginGuild(guildName, password) {
-  const snap = await getDoc(guildDocRef(guildName));
+  const snap = await withTimeout(getDoc(guildDocRef(guildName)));
   if (!snap.exists()) return false;
   const passwordHash = await hashPassword(password);
   return snap.data().passwordHash === passwordHash;
 }
 
 export async function getGuild(guildName) {
-  const snap = await getDoc(guildDocRef(guildName));
+  const snap = await withTimeout(getDoc(guildDocRef(guildName)));
   return snap.exists() ? normalizeGuild(snap.data()) : null;
 }
 
 async function updateGuild(guildName, updater) {
   const ref = guildDocRef(guildName);
-  const snap = await getDoc(ref);
+  const snap = await withTimeout(getDoc(ref));
   if (!snap.exists()) throw new Error('ギルドが見つかりません');
   const guild = normalizeGuild(snap.data());
   updater(guild);
-  await setDoc(ref, guild);
+  await withTimeout(setDoc(ref, guild));
   return guild;
 }
 
@@ -132,9 +145,9 @@ export function reorderMembers(guildName, orderedIds) {
 
 // --- items ---
 
-export function addItem(guildName, itemName, slotCount, priority) {
+export function addItem(guildName, itemName, slotCount) {
   return updateGuild(guildName, guild => {
-    guild.items.push({ id: newId(), itemName, slotCount, priority });
+    guild.items.push({ id: newId(), itemName, slotCount });
   });
 }
 
