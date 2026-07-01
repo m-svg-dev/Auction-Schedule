@@ -313,25 +313,39 @@ function renderAdminDashboard() {
       </div>
     </div>`;
 
-  // 落札実績（確認済みのみカウント）
-  const winCounts = Object.fromEntries(members.map(m => [m.name, 0]));
-  guild.assignments.filter(a => a.memberName && a.confirmed === true).forEach(a => {
-    if (winCounts[a.memberName] !== undefined) winCounts[a.memberName]++;
-  });
-  const maxWins = Math.max(0, ...Object.values(winCounts));
-  $('dashboard-wins').innerHTML = members.length === 0 ? '' : `
-    <h3 class="dashboard-wins-title">落札実績（確認済み）</h3>
-    <div class="wins-table">
-      ${members.map(m => {
-        const w = winCounts[m.name] || 0;
-        const pct = maxWins > 0 ? Math.round((w / maxWins) * 100) : 0;
-        return `<div class="wins-row">
-          <span class="wins-name">${m.name}</span>
-          <div class="wins-bar-wrap"><div class="wins-bar" style="width:${pct}%"></div></div>
-          <span class="wins-count">${w}回</span>
+  // アイテム別落札実績（確認済みのみ）
+  // itemWins = { アイテム名: { メンバー名: 回数 } }
+  const itemWins = {};
+  guild.items.forEach(it => { itemWins[it.itemName] = {}; });
+  guild.assignments
+    .filter(a => a.memberName && a.confirmed === true)
+    .forEach(a => {
+      if (!itemWins[a.itemName]) itemWins[a.itemName] = {};
+      itemWins[a.itemName][a.memberName] = (itemWins[a.itemName][a.memberName] || 0) + 1;
+    });
+
+  const hasAnyWins = guild.assignments.some(a => a.memberName && a.confirmed === true);
+  $('dashboard-wins').innerHTML = guild.items.length === 0 ? '' : `
+    <h3 class="dashboard-wins-title">アイテム別落札実績（確認済み）</h3>
+    ${guild.items.map(it => {
+      const winsForItem = itemWins[it.itemName] || {};
+      const rows = members
+        .map(m => ({ name: m.name, count: winsForItem[m.name] || 0 }))
+        .filter(r => r.count > 0);
+      const maxW = Math.max(0, ...rows.map(r => r.count));
+      return `
+        <div class="item-wins-block">
+          <div class="item-wins-header">${it.itemName}</div>
+          ${rows.length === 0
+            ? '<div class="item-wins-empty">まだ落札記録なし</div>'
+            : rows.map(r => `
+              <div class="wins-row">
+                <span class="wins-name">${r.name}</span>
+                <div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.round((r.count / maxW) * 100)}%"></div></div>
+                <span class="wins-count">${r.count}回</span>
+              </div>`).join('')}
         </div>`;
-      }).join('')}
-    </div>`;
+    }).join('')}`;
 }
 
 function slotMark(n) {

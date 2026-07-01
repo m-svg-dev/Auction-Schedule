@@ -466,6 +466,23 @@ button:disabled {
 .confirm-winner { font-weight: bold; color: #2e7d32; font-size: 0.9rem; flex: 1; }
 .all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
 
+.item-wins-block {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.item-wins-header {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--color-text);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+.item-wins-empty { font-size: 0.8rem; color: var(--color-border); }
+
 .wisher-cell { font-size: 0.85rem; }
 .wisher-count { font-weight: bold; color: var(--color-purple); margin-right: 6px; }
 .wisher-names { color: var(--color-text-muted); font-size: 0.8rem; }
