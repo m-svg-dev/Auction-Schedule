@@ -155,7 +155,7 @@ const ADMIN_NAV = [
   { id: 'member-management', label: 'メンバー管理' },
   { id: 'item-management', label: 'アイテム管理' },
   { id: 'wishlist-management', label: '希望アイテム管理' },
-  { id: 'unavailable-management', label: 'イン不可管理' },
+  { id: 'unavailable-management', label: '欠席管理' },
   { id: 'request-management', label: '申請管理' },
   { id: 'auto-assign', label: '自動割り当て' },
   { id: 'calendar', label: 'カレンダー' },
@@ -332,7 +332,7 @@ function renderAdminDashboard() {
   $('dashboard-stats').innerHTML = `
     <div class="stat-card"><div class="stat-val">${guild.members.length}</div><div class="stat-label">メンバー</div></div>
     <div class="stat-card"><div class="stat-val">${guild.items.length}</div><div class="stat-label">アイテム</div></div>
-    <div class="stat-card"><div class="stat-val">${unavailableThisWeek}</div><div class="stat-label">今週イン不可</div></div>
+    <div class="stat-card"><div class="stat-val">${unavailableThisWeek}</div><div class="stat-label">今週欠席</div></div>
   `;
 
   // 未確認の過去週を検出（直近3週分まで）
@@ -769,7 +769,7 @@ function renderRequestManagement() {
   });
 }
 
-// --- 管理者：イン不可管理 ---
+// --- 管理者：欠席管理 ---
 
 function renderUnavailableManagement() {
   const guild = currentGuild;
@@ -1103,7 +1103,7 @@ function renderMemberHome() {
     : '<tr><td colspan="3">今後の担当はありません</td></tr>';
 }
 
-// --- メンバー：イン不可申請 ---
+// --- メンバー：欠席連絡 ---
 
 function renderMemberUnavailableRequest() {
   const guild = currentGuild;

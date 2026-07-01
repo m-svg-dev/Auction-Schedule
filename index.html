@@ -119,14 +119,14 @@
     <!-- 管理者：申請管理 -->
     <section id="view-request-management" class="view hidden">
       <h2>申請管理</h2>
-      <p class="hint">メンバーからのイン不可申請一覧です。担当がある場合は「承認・割当取消」で担当を外せます。</p>
+      <p class="hint">メンバーからの欠席連絡一覧です。担当がある場合は「承認・割当取消」で担当を外せます。</p>
       <div id="request-list"></div>
     </section>
 
-    <!-- 管理者：イン不可管理 -->
+    <!-- 管理者：欠席管理 -->
     <section id="view-unavailable-management" class="view hidden">
-      <h2>イン不可管理</h2>
-      <p class="hint">メンバーがオークションに参加できない週を登録します。自動割り当てを実行するとき、登録された週はそのメンバーをスキップします。</p>
+      <h2>欠席管理</h2>
+      <p class="hint">メンバーの欠席を直接登録します。自動割り当て実行時、登録された週はそのメンバーをスキップします。</p>
       <form id="form-add-unavailable" class="inline-form">
         <label>メンバー <select id="unavailable-member"></select></label>
         <label>対象週（日曜日） <select id="unavailable-week" required></select></label>

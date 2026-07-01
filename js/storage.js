@@ -270,7 +270,7 @@ export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
   });
 }
 
-// イン不可申請承認: その週のその人の担当をキャンセル（memberName を null に）
+// 欠席連絡承認: その週のその人の担当をキャンセル（memberName を null に）
 export function cancelMemberAssignment(guildName, memberName, week) {
   return updateGuild(guildName, guild => {
     guild.assignments
