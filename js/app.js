@@ -643,27 +643,125 @@ function renderAssignResult(assignments) {
 
 // --- カレンダー ---
 
-function renderCalendar() {
-  $('calendar-week-label').textContent = `${formatSunday(currentCalendarWeek)}（${formatWeekRange(currentCalendarWeek)}）`;
-  const assignments = store.getAssignmentsForWeek(currentGuild, currentCalendarWeek);
-  $('calendar-table-body').innerHTML = assignments.length
-    ? assignments.map(a => `
-        <tr>
-          <td>${a.week}</td>
-          <td>${a.itemName}</td>
-          <td>${slotMark(a.slotNo)}</td>
-          <td>${a.memberName || '（未割り当て）'}</td>
-        </tr>
-      `).join('')
-    : '<tr><td colspan="4">この週の割り当てはまだありません</td></tr>';
+// カレンダー編集状態: 週ごとにリセット
+let calendarState = null;
+
+function initCalendarState(week) {
+  const guild = currentGuild;
+  const absentThisWeek = new Set(
+    guild.unavailableWeeks.filter(u => u.week === week).map(u => u.memberName)
+  );
+  const assignments = store.getAssignmentsForWeek(guild, week).map(a => ({ ...a }));
+  calendarState = { week, localAbsent: absentThisWeek, assignments, dirty: false };
 }
 
+function recalcCalendar() {
+  const guild = currentGuild;
+  // 参加状況のみ差し替えてローテーションを再計算（ポインタは変更しない）
+  const modifiedGuild = {
+    ...guild,
+    unavailableWeeks: [
+      ...guild.unavailableWeeks.filter(u => u.week !== calendarState.week),
+      ...[...calendarState.localAbsent].map(memberName => ({ memberName, week: calendarState.week, reason: '' })),
+    ],
+  };
+  const result = generateWeekAssignments(modifiedGuild, calendarState.week);
+  calendarState.assignments = result.assignments;
+}
+
+function renderCalendar() {
+  const week = currentCalendarWeek;
+  $('calendar-week-label').textContent = `${formatSunday(week)}（${formatWeekRange(week)}）`;
+
+  if (calendarState?.week !== week) initCalendarState(week);
+
+  // 参加状況トグル（管理者のみ）
+  const statusEl = $('calendar-member-status');
+  if (session.role === 'admin') {
+    statusEl.classList.remove('hidden');
+    const members = [...currentGuild.members].sort((a, b) => a.orderNo - b.orderNo);
+    statusEl.innerHTML = members.length === 0 ? '' : `
+      <div class="calendar-status-label">この週の参加状況（タップで切替）</div>
+      <div class="calendar-member-toggles">
+        ${members.map(m => {
+          const absent = calendarState.localAbsent.has(m.name);
+          return `<button class="member-toggle ${absent ? 'absent' : 'present'}" data-member="${m.name}">${m.name}</button>`;
+        }).join('')}
+      </div>
+    `;
+    statusEl.querySelectorAll('[data-member]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.member;
+        if (calendarState.localAbsent.has(name)) calendarState.localAbsent.delete(name);
+        else calendarState.localAbsent.add(name);
+        recalcCalendar();
+        calendarState.dirty = true;
+        renderCalendar();
+      });
+    });
+  } else {
+    statusEl.classList.add('hidden');
+  }
+
+  // 割り当てテーブル
+  const rows = calendarState.assignments;
+  const memberOptions = [...currentGuild.members]
+    .sort((a, b) => a.orderNo - b.orderNo)
+    .map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+
+  $('calendar-table-body').innerHTML = rows.length
+    ? rows.map((a, idx) => {
+        const cell = session.role === 'admin'
+          ? `<select class="calendar-member-select" data-idx="${idx}">
+               <option value="">（未割当）</option>
+               ${[...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo)
+                 .map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
+             </select>`
+          : (a.memberName || '（未割当）');
+        return `<tr><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
+      }).join('')
+    : '<tr><td colspan="3">この週の割り当てはまだありません<br><small>「自動割り当て」から実行してください</small></td></tr>';
+
+  if (session.role === 'admin') {
+    $('calendar-table-body').querySelectorAll('.calendar-member-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        calendarState.assignments[+sel.dataset.idx].memberName = sel.value || null;
+        calendarState.dirty = true;
+        updateCalendarSaveBar();
+      });
+    });
+  }
+
+  updateCalendarSaveBar();
+}
+
+function updateCalendarSaveBar() {
+  const bar = $('calendar-save-bar');
+  const showBar = session.role === 'admin' && calendarState?.dirty;
+  bar.classList.toggle('hidden', !showBar);
+}
+
+$('calendar-save-btn').addEventListener('click', () => withBusyAction($('calendar-save-btn'), async () => {
+  const { week, assignments, localAbsent } = calendarState;
+  const prevAbsent = currentGuild.unavailableWeeks.filter(u => u.week === week);
+  const prevAbsentNames = new Set(prevAbsent.map(u => u.memberName));
+  const addNames = [...localAbsent].filter(n => !prevAbsentNames.has(n));
+  const removeIds = new Set(prevAbsent.filter(u => !localAbsent.has(u.memberName)).map(u => u.id));
+  await store.saveCalendarEdits(session.guildName, week, assignments, addNames, removeIds);
+  await refreshGuild();
+  calendarState.dirty = false;
+  renderCalendar();
+  showToast('保存しました');
+}));
+
 $('calendar-prev').addEventListener('click', async () => {
+  if (calendarState?.dirty) { showToast('先に「この週を保存」してから移動してください'); return; }
   currentCalendarWeek = addWeeks(currentCalendarWeek, -1);
   await refreshGuild();
   renderCalendar();
 });
 $('calendar-next').addEventListener('click', async () => {
+  if (calendarState?.dirty) { showToast('先に「この週を保存」してから移動してください'); return; }
   currentCalendarWeek = addWeeks(currentCalendarWeek, 1);
   await refreshGuild();
   renderCalendar();

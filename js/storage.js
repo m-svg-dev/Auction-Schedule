@@ -248,6 +248,18 @@ export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
   });
 }
 
+// カレンダー編集結果をまとめて1回のFirestore書き込みで保存する
+export function saveCalendarEdits(guildName, week, assignments, addUnavailNames, removeUnavailIds) {
+  return updateGuild(guildName, guild => {
+    guild.assignments = guild.assignments.filter(a => a.week !== week);
+    guild.assignments.push(...assignments);
+    guild.unavailableWeeks = guild.unavailableWeeks.filter(u => !removeUnavailIds.has(u.id));
+    addUnavailNames.forEach(memberName => {
+      guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: '（カレンダーから設定）' });
+    });
+  });
+}
+
 export function searchAssignmentsByMember(guild, memberName) {
   if (!guild) return [];
   return guild.assignments
