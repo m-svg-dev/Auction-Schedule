@@ -146,6 +146,7 @@
       <div class="assign-block">
         <h3>一括実行（おすすめ）</h3>
         <p class="hint">今週の日曜日から指定した週数分をまとめて割り当てます。メンバー人数分でちょうど1周する週数を入れると均等になります。</p>
+        <div id="bulk-assigned-status"></div>
         <p id="bulk-assign-range-label" class="assign-range-label"></p>
         <form id="form-bulk-assign" class="inline-form">
           <label>今週から <input type="number" id="bulk-weeks-count" min="1" max="52" value="4" required> 週分</label>
@@ -157,8 +158,9 @@
       <div class="assign-block">
         <h3>特定の週を実行</h3>
         <p class="hint">1週分だけ指定して実行したい場合に使います。</p>
+        <div id="single-assigned-status"></div>
         <form id="form-auto-assign" class="inline-form">
-          <label>対象週 <input type="week" id="assign-week" required></label>
+          <label>対象週 <select id="assign-week" required></select></label>
           <button type="submit" class="btn-primary">実行</button>
         </form>
         <table class="data-table">

@@ -833,23 +833,55 @@ function runMultipleWeeksInMemory(guild, startWeek, count) {
 
 function renderAutoAssign() {
   const thisWeek = getCurrentWeek();
-  if (!$('assign-week').value) $('assign-week').value = thisWeek;
+  const guild = currentGuild;
 
+  // 一括実行: 現在の設定済み最終週を表示
+  updateBulkAssignedStatus();
+
+  // 一括実行: 週数変更時のプレビュー更新
   const weekCount = parseInt($('bulk-weeks-count').value, 10) || 4;
-  const endWeek = addWeeks(thisWeek, weekCount - 1);
-  $('bulk-assign-range-label').textContent =
-    `${formatSunday(thisWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+  updateBulkRangeLabel(weekCount);
+
+  // 特定の週: 日曜日プルダウンを設定
+  const currentVal = $('assign-week').value || thisWeek;
+  populateSundaySelect('assign-week', currentVal, 2, 12);
+  updateSingleAssignedStatus(currentVal);
 
   $('assign-result-body').innerHTML = '';
   $('bulk-assign-summary').innerHTML = '';
 }
 
-$('bulk-weeks-count').addEventListener('input', () => {
+function updateBulkAssignedStatus() {
+  const guild = currentGuild;
+  const assignedWeeks = [...new Set(guild.assignments.map(a => a.week))].sort();
+  const latestWeek = assignedWeeks.length > 0 ? assignedWeeks[assignedWeeks.length - 1] : null;
+  $('bulk-assigned-status').innerHTML = latestWeek
+    ? `<div class="assigned-status assigned-ok">✓ ${formatSunday(latestWeek)} まで設定済み</div>`
+    : `<div class="assigned-status assigned-none">まだ割り当てがありません</div>`;
+}
+
+function updateBulkRangeLabel(weekCount) {
   const thisWeek = getCurrentWeek();
-  const weekCount = parseInt($('bulk-weeks-count').value, 10) || 1;
   const endWeek = addWeeks(thisWeek, weekCount - 1);
   $('bulk-assign-range-label').textContent =
     `${formatSunday(thisWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+}
+
+function updateSingleAssignedStatus(week) {
+  const el = $('single-assigned-status');
+  if (!week) { el.innerHTML = ''; return; }
+  const hasAssign = currentGuild.assignments.some(a => a.week === week);
+  el.innerHTML = hasAssign
+    ? `<div class="assigned-status assigned-warn">⚠ ${formatSundayShort(week)} はすでに設定済みです（実行すると上書きされます）</div>`
+    : `<div class="assigned-status assigned-none">${formatSundayShort(week)} は未設定です</div>`;
+}
+
+$('bulk-weeks-count').addEventListener('input', () => {
+  updateBulkRangeLabel(parseInt($('bulk-weeks-count').value, 10) || 1);
+});
+
+$('assign-week').addEventListener('change', () => {
+  updateSingleAssignedStatus($('assign-week').value);
 });
 
 $('form-bulk-assign').addEventListener('submit', e => {
@@ -866,6 +898,7 @@ $('form-bulk-assign').addEventListener('submit', e => {
     const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, thisWeek, weekCount);
     await store.applyBulkAssignments(session.guildName, allAssignments, finalPointers);
     await refreshGuild();
+    updateBulkAssignedStatus();
 
     const endWeek = addWeeks(thisWeek, weekCount - 1);
     showToast(`${formatSunday(thisWeek)}〜${formatSunday(endWeek)} の${weekCount}週分を実行しました`);
@@ -904,6 +937,8 @@ $('form-auto-assign').addEventListener('submit', e => {
     const result = generateWeekAssignments(guild, week);
     await store.applyWeekAssignments(session.guildName, week, result);
     await refreshGuild();
+    updateBulkAssignedStatus();
+    updateSingleAssignedStatus(week);
     renderAssignResult(result.assignments);
     showToast(`${formatSunday(week)} の割り当てを実行しました`);
   });
