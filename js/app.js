@@ -220,6 +220,18 @@ async function navigateTo(viewId) {
 
 // --- 管理者：ダッシュボード ---
 
+// メンバー選択肢を生成。希望者には ★ を付け、文字色を紫にする（iOS非対応のためテキスト記号も併用）
+function memberOptions(members, itemName, selectedName) {
+  return members.map(m => {
+    const isWisher = currentGuild.wishlists.some(w => w.memberName === m.name && w.itemName === itemName);
+    const label = isWisher ? `★ ${m.name}` : m.name;
+    const style = isWisher ? ' style="color:#7c4dff;font-weight:bold"' : '';
+    return `<option value="${m.name}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
+  }).join('');
+}
+
+const WISH_LEGEND = '<p class="wish-legend"><span class="wish-star">★</span> このアイテムを希望しているメンバー</p>';
+
 function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
   const allConfirmed = assignments.every(a => a.confirmed);
   return `
@@ -241,12 +253,13 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
               <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
               <select class="confirm-select" data-week="${week}" data-idx="${idx}">
                 <option value="">（未割当）</option>
-                ${members.map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
+                ${memberOptions(members, a.itemName, a.memberName)}
               </select>
               <button class="btn-confirm" data-week="${week}" data-idx="${idx}">落札！</button>
              </div>`
         ).join('')}
       </div>
+      ${WISH_LEGEND}
     </div>`;
 }
 
@@ -880,11 +893,11 @@ function renderCalendar() {
   $('calendar-table-body').innerHTML = rows.length
     ? rows.map((a, idx) => {
         const isMine = session.role === 'member' && a.memberName === session.memberName;
+        const sortedMembers = [...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo);
         const cell = session.role === 'admin'
           ? `<select class="calendar-member-select" data-idx="${idx}">
                <option value="">（未割当）</option>
-               ${[...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo)
-                 .map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
+               ${memberOptions(sortedMembers, a.itemName, a.memberName)}
              </select>`
           : `<span class="${isMine ? 'calendar-mine-name' : ''}">${a.memberName || '（未割当）'}</span>`;
         return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
@@ -899,6 +912,14 @@ function renderCalendar() {
         updateCalendarSaveBar();
       });
     });
+    // 凡例（希望者がいる場合のみ表示）
+    const hasWishers = calendarState.assignments.some(a =>
+      currentGuild.wishlists.some(w => w.itemName === a.itemName)
+    );
+    const legendEl = document.querySelector('#view-calendar .wish-legend');
+    if (!legendEl && hasWishers) {
+      $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND);
+    }
   }
 
   updateCalendarSaveBar();

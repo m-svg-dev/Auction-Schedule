@@ -501,6 +501,13 @@ button:disabled {
   font-weight: bold;
 }
 
+.wish-legend {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+.wish-star { color: var(--color-purple); font-weight: bold; }
+
 .item-wins-block {
   background: #fff;
   border-radius: var(--radius);
