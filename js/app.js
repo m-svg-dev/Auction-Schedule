@@ -1099,9 +1099,6 @@ function renderCalendar() {
 
   // 割り当てテーブル
   const rows = calendarState.assignments;
-  const memberOptions = [...currentGuild.members]
-    .sort((a, b) => a.orderNo - b.orderNo)
-    .map(m => `<option value="${m.name}">${m.name}</option>`).join('');
 
   $('calendar-table-body').innerHTML = rows.length
     ? rows.map((a, idx) => {
