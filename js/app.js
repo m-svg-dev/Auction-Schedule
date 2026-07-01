@@ -213,18 +213,20 @@ function getBottomTabForView(viewId) {
 }
 
 function openSettingsSheet() {
-  const sheet = $('settings-sheet');
   const items = $('settings-sheet-items');
-  items.innerHTML = ADMIN_SETTINGS_ITEMS.map(it => `
-    <button class="settings-sheet-item" data-view="${it.id}">${it.label}</button>
-  `).join('');
-  items.querySelectorAll('[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      closeSettingsSheet();
-      navigateTo(btn.dataset.view);
+  // 内容は定数なので初回のみDOM生成（毎回再生成・再バインドを避ける）
+  if (!items.hasChildNodes()) {
+    items.innerHTML = ADMIN_SETTINGS_ITEMS.map(it => `
+      <button class="settings-sheet-item" data-view="${it.id}">${it.label}</button>
+    `).join('');
+    items.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        closeSettingsSheet();
+        navigateTo(btn.dataset.view);
+      });
     });
-  });
-  sheet.classList.remove('hidden');
+  }
+  $('settings-sheet').classList.remove('hidden');
 }
 
 function closeSettingsSheet() {
@@ -349,12 +351,12 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
       <div class="confirm-list">
         ${assignments.map((a, idx) => a.confirmed
           ? `<div class="confirm-row confirmed">
-              <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
-              <span class="confirm-winner">✓ ${a.memberName || '—'}</span>
+              <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
+              <span class="confirm-winner">✓ ${escapeHtml(a.memberName || '—')}</span>
               <button class="btn-cancel-confirm" data-week="${week}" data-idx="${idx}">取消</button>
              </div>`
           : `<div class="confirm-row">
-              <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+              <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
               <select class="confirm-select" data-week="${week}" data-idx="${idx}">
                 <option value="">（未割当）</option>
                 ${memberOptions(members, a.itemName, a.memberName)}
@@ -471,8 +473,8 @@ function renderAdminDashboard() {
       <div class="next-list">
         ${nextWeekAssignments.map(a => `
           <div class="next-row">
-            <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
-            <span class="next-winner">${a.memberName || '—'}</span>
+            <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
+            <span class="next-winner">${escapeHtml(a.memberName || '—')}</span>
           </div>`).join('')}
       </div>
     </div>`;
@@ -499,12 +501,12 @@ function renderAdminDashboard() {
       const maxW = Math.max(0, ...rows.map(r => r.count));
       return `
         <div class="item-wins-block">
-          <div class="item-wins-header">${it.itemName}</div>
+          <div class="item-wins-header">${escapeHtml(it.itemName)}</div>
           ${rows.length === 0
             ? '<div class="item-wins-empty">まだ落札記録なし</div>'
             : rows.map(r => `
               <div class="wins-row">
-                <span class="wins-name">${r.name}</span>
+                <span class="wins-name">${escapeHtml(r.name)}</span>
                 <div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.round((r.count / maxW) * 100)}%"></div></div>
                 <span class="wins-count">${r.count}回</span>
               </div>`).join('')}
@@ -530,7 +532,7 @@ function renderMemberManagement() {
     const li = document.createElement('li');
     li.draggable = true;
     li.dataset.id = m.id;
-    li.innerHTML = `<span><span class="order-no">${m.orderNo}.</span>${m.name}</span>`;
+    li.innerHTML = `<span><span class="order-no">${m.orderNo}.</span>${escapeHtml(m.name)}</span>`;
 
     const actions = document.createElement('span');
     actions.className = 'member-actions';
@@ -643,10 +645,10 @@ function renderItemManagement() {
       .map(w => w.memberName);
     const wisherBadge = wishers.length === 0
       ? '<span class="wisher-none">なし</span>'
-      : `<span class="wisher-count">${wishers.length}人</span><span class="wisher-names">${wishers.join('・')}</span>`;
+      : `<span class="wisher-count">${wishers.length}人</span><span class="wisher-names">${wishers.map(escapeHtml).join('・')}</span>`;
     return `
       <tr>
-        <td>${it.itemName}</td>
+        <td>${escapeHtml(it.itemName)}</td>
         <td>${it.slotCount}</td>
         <td class="wisher-cell">${wisherBadge}</td>
         <td><button class="btn-danger" data-del-item="${it.id}">削除</button></td>
@@ -711,7 +713,7 @@ function renderWishlistList() {
   const availableItems = guild.items.filter(it => !wishedItemNames.has(it.itemName));
   const itemSelect = $('wishlist-item-select');
   itemSelect.innerHTML = availableItems.length
-    ? availableItems.map(it => `<option value="${it.itemName}">${it.itemName}</option>`).join('')
+    ? availableItems.map(it => `<option value="${escapeHtml(it.itemName)}">${escapeHtml(it.itemName)}</option>`).join('')
     : '<option value="">追加できるアイテムがありません</option>';
 
   const list = $('wishlist-list');
@@ -725,7 +727,7 @@ function renderWishlistList() {
     const li = document.createElement('li');
     li.draggable = true;
     li.dataset.id = w.id;
-    li.innerHTML = `<span><span class="order-no">${i + 1}.</span>${w.itemName}</span>`;
+    li.innerHTML = `<span><span class="order-no">${i + 1}.</span>${escapeHtml(w.itemName)}</span>`;
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
@@ -787,6 +789,16 @@ function renderRequestManagement() {
   const pending = requests.filter(u => u.status === 'pending');
   const history = requests.filter(u => u.status !== 'pending');
 
+  // ⑧ 申請件数×割り当て件数の O(P×A) スキャンを避けるため事前にMapを構築
+  const assignmentMap = new Map();
+  guild.assignments.forEach(a => {
+    if (a.memberName) {
+      const key = `${a.week}|${a.memberName}`;
+      if (!assignmentMap.has(key)) assignmentMap.set(key, []);
+      assignmentMap.get(key).push(a);
+    }
+  });
+
   let html = '';
 
   // 未処理の申請
@@ -795,7 +807,7 @@ function renderRequestManagement() {
     html += '<p class="empty-state">未処理の申請はありません</p>';
   } else {
     html += pending.map(u => {
-      const assignment = guild.assignments.filter(a => a.week === u.week && a.memberName === u.memberName);
+      const assignment = assignmentMap.get(`${u.week}|${u.memberName}`) || [];
       const hasConfirmed = assignment.some(a => a.confirmed === true);
       const hasUnconfirmed = assignment.some(a => a.confirmed !== true);
       const assignmentInfo = hasConfirmed
@@ -841,10 +853,10 @@ function renderRequestManagement() {
   // 承認ボタン
   $('request-list').querySelectorAll('.btn-approve').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
-      await store.approveRequest(session.guildName, btn.dataset.id);
-      if (btn.dataset.hasAssign === 'true') {
-        await store.cancelMemberAssignment(session.guildName, btn.dataset.member, btn.dataset.week);
-      }
+      // approveとassignment cancel をアトミックに1回のFirestore書き込みで実行
+      await store.approveRequestAndCancelAssignment(
+        session.guildName, btn.dataset.id, btn.dataset.member, btn.dataset.week
+      );
       await refreshGuild();
       renderRequestManagement();
       showToast('申請を承認しました');
@@ -872,7 +884,10 @@ function renderUnavailableManagement() {
     .join('');
   populateSundaySelect('unavailable-week', $('unavailable-week').value, 0, 12);
 
-  const rows = [...guild.unavailableWeeks].sort((a, b) => a.week.localeCompare(b.week));
+  // メンバー申請（memberRequest:true）は申請管理ページで管理するためここでは除外
+  const rows = [...guild.unavailableWeeks]
+    .filter(u => !u.memberRequest)
+    .sort((a, b) => a.week.localeCompare(b.week));
   $('unavailable-table-body').innerHTML = rows.map(u => `
     <tr>
       <td>${escapeHtml(u.memberName)}</td>
@@ -1006,9 +1021,9 @@ $('form-bulk-assign').addEventListener('submit', e => {
           <div class="bulk-week-table">
             ${rows.map(a => `
               <div class="bulk-week-item">
-                <span class="bulk-item-name">${a.itemName}</span>
+                <span class="bulk-item-name">${escapeHtml(a.itemName)}</span>
                 <span class="bulk-item-slot">${slotMark(a.slotNo)}</span>
-                <span class="bulk-item-member ${a.memberName ? '' : 'bulk-item-unassigned'}">${a.memberName || '未割当'}</span>
+                <span class="bulk-item-member ${a.memberName ? '' : 'bulk-item-unassigned'}">${escapeHtml(a.memberName || '未割当')}</span>
               </div>`).join('')}
           </div>
         </div>`);
@@ -1040,8 +1055,8 @@ $('form-auto-assign').addEventListener('submit', e => {
 function renderAssignResult(assignments) {
   $('assign-result-body').innerHTML = assignments.map(a => `
     <tr>
-      <td>${a.itemName}${slotMark(a.slotNo)}</td>
-      <td>${a.memberName || '（割り当て不可）'}</td>
+      <td>${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</td>
+      <td>${escapeHtml(a.memberName || '（割り当て不可）')}</td>
     </tr>
   `).join('');
 }
@@ -1114,18 +1129,19 @@ function renderCalendar() {
 
   // 割り当てテーブル
   const rows = calendarState.assignments;
+  // ⑦ map内で毎行ソートしないよう事前に1回だけソートしておく
+  const sortedMembers = [...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo);
 
   $('calendar-table-body').innerHTML = rows.length
     ? rows.map((a, idx) => {
         const isMine = session.role === 'member' && a.memberName === session.memberName;
-        const sortedMembers = [...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo);
         const cell = session.role === 'admin'
           ? `<select class="calendar-member-select" data-idx="${idx}">
                <option value="">（未割当）</option>
                ${memberOptions(sortedMembers, a.itemName, a.memberName)}
              </select>`
-          : `<span class="${isMine ? 'calendar-mine-name' : ''}">${a.memberName || '（未割当）'}</span>`;
-        return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
+          : `<span class="${isMine ? 'calendar-mine-name' : ''}">${escapeHtml(a.memberName) || '（未割当）'}</span>`;
+        return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
       }).join('')
     : '<tr><td colspan="3">この週の割り当てはまだありません<br><small>「自動割り当て」から実行してください</small></td></tr>';
 
@@ -1200,7 +1216,7 @@ function showMemberSearchResults(memberName) {
   }
   const results = store.searchAssignmentsByMember(currentGuild, memberName);
   $('search-result-body').innerHTML = results.length
-    ? results.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    ? results.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
     : '<tr><td colspan="3">担当の記録がありません</td></tr>';
 }
 
@@ -1219,7 +1235,7 @@ function renderMemberHome() {
   $('member-home-cards').innerHTML = `
     <div class="card gold">
       <div class="label">今週の担当 ${formatSundayShort(thisWeek)}</div>
-      <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${a.itemName}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
+      <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
     </div>
     <div class="card purple">
       <div class="label">今後の担当件数</div>
@@ -1228,7 +1244,7 @@ function renderMemberHome() {
   `;
 
   $('member-home-table-body').innerHTML = upcoming.length
-    ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
     : '<tr><td colspan="3">今後の担当はありません</td></tr>';
 }
 

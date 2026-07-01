@@ -191,6 +191,17 @@ export function approveRequest(guildName, unavailId) {
   });
 }
 
+// approveRequest + cancelMemberAssignment を1回の Firestore 書き込みでアトミックに実行
+export function approveRequestAndCancelAssignment(guildName, unavailId, memberName, week) {
+  return updateGuild(guildName, guild => {
+    const u = guild.unavailableWeeks.find(w => w.id === unavailId);
+    if (u) { u.status = 'approved'; u.reviewedAt = new Date().toISOString(); }
+    guild.assignments
+      .filter(a => a.week === week && a.memberName === memberName && a.confirmed !== true)
+      .forEach(a => { a.memberName = null; a.confirmed = false; });
+  });
+}
+
 export function rejectRequest(guildName, unavailId) {
   return updateGuild(guildName, guild => {
     const u = guild.unavailableWeeks.find(w => w.id === unavailId);
@@ -300,7 +311,7 @@ export function saveCalendarEdits(guildName, week, assignments, addUnavailNames,
     guild.assignments.push(...assignments);
     guild.unavailableWeeks = guild.unavailableWeeks.filter(u => !removeUnavailIds.has(u.id));
     addUnavailNames.forEach(memberName => {
-      guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: '（カレンダーから設定）' });
+      guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: '（カレンダーから設定）', status: 'approved' });
     });
   });
 }
