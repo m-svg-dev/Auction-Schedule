@@ -178,6 +178,20 @@ button, input, select {
 }
 .btn-danger:hover { background: #e0506a; color: #fff; }
 
+.btn-guide {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.7);
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-guide:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
 .btn-logout {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.3);
