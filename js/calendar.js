@@ -50,3 +50,11 @@ export function formatSunday(weekStr) {
   sunday.setUTCDate(monday.getUTCDate() + 6);
   return `${sunday.getUTCMonth() + 1}月${sunday.getUTCDate()}日（日）`;
 }
+
+// テーブル用の短縮形「7/6（日）」
+export function formatSundayShort(weekStr) {
+  const monday = getMondayOfISOWeek(weekStr);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return `${sunday.getUTCMonth() + 1}/${sunday.getUTCDate()}（日）`;
+}

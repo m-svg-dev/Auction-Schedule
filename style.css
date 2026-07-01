@@ -478,6 +478,20 @@ button:disabled {
 .btn-cancel-confirm:hover { border-color: #e0506a; color: #e0506a; }
 .all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
 
+.card .value-text {
+  font-size: 0.95rem;
+  font-weight: bold;
+  line-height: 1.5;
+}
+
+.date-cell { white-space: nowrap; font-size: 0.85rem; }
+
+.calendar-mine-row { background: rgba(124,77,255,0.07); }
+.calendar-mine-name {
+  color: var(--color-purple);
+  font-weight: bold;
+}
+
 .item-wins-block {
   background: #fff;
   border-radius: var(--radius);

@@ -1,6 +1,6 @@
 import * as store from './storage.js';
 import { generateWeekAssignments } from './rotation.js';
-import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday } from './calendar.js';
+import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday, formatSundayShort } from './calendar.js';
 
 const SESSION_KEY = 'guildAuctionSession_v1';
 
@@ -835,14 +835,15 @@ function renderCalendar() {
 
   $('calendar-table-body').innerHTML = rows.length
     ? rows.map((a, idx) => {
+        const isMine = session.role === 'member' && a.memberName === session.memberName;
         const cell = session.role === 'admin'
           ? `<select class="calendar-member-select" data-idx="${idx}">
                <option value="">（未割当）</option>
                ${[...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo)
                  .map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
              </select>`
-          : (a.memberName || '（未割当）');
-        return `<tr><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
+          : `<span class="${isMine ? 'calendar-mine-name' : ''}">${a.memberName || '（未割当）'}</span>`;
+        return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
       }).join('')
     : '<tr><td colspan="3">この週の割り当てはまだありません<br><small>「自動割り当て」から実行してください</small></td></tr>';
 
@@ -922,8 +923,8 @@ function renderMemberHome() {
 
   $('member-home-cards').innerHTML = `
     <div class="card gold">
-      <div class="label">今週の担当</div>
-      <div class="value">${thisWeekMine.length ? thisWeekMine.map(a => `${a.itemName}${slotMark(a.slotNo)}`).join(' / ') : 'なし'}</div>
+      <div class="label">今週の担当 ${formatSundayShort(thisWeek)}</div>
+      <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${a.itemName}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
     </div>
     <div class="card purple">
       <div class="label">今後の担当件数</div>
@@ -932,7 +933,7 @@ function renderMemberHome() {
   `;
 
   $('member-home-table-body').innerHTML = upcoming.length
-    ? upcoming.map(a => `<tr><td>${a.week}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
     : '<tr><td colspan="3">今後の担当はありません</td></tr>';
 }
 
