@@ -179,16 +179,18 @@ button, input, select {
 .btn-danger:hover { background: #e0506a; color: #fff; }
 
 .btn-logout {
-  margin: 16px;
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.25);
-  color: #fff;
-  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.7);
+  padding: 6px 10px;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: background 0.12s;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.btn-logout:hover { background: var(--color-sidebar-hover); }
+.btn-logout:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.6); }
 
 button:disabled {
   opacity: 0.55;
@@ -213,12 +215,17 @@ button:disabled {
 }
 
 .sidebar-header {
-  padding: 24px 16px 12px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
+.sidebar-title { min-width: 0; }
 .sidebar-header h1 {
   font-size: 1.1rem;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   word-break: break-all;
 }
 .role-badge {
