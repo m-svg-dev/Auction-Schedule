@@ -453,13 +453,27 @@ $('form-add-member').addEventListener('submit', e => {
 
 function renderItemManagement() {
   const guild = currentGuild;
-  $('item-table-body').innerHTML = guild.items.map(it => `
-    <tr>
-      <td>${it.itemName}</td>
-      <td>${it.slotCount}</td>
-      <td><button class="btn-danger" data-del-item="${it.id}">削除</button></td>
-    </tr>
-  `).join('');
+  const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
+  $('item-table-body').innerHTML = guild.items.map(it => {
+    const wishers = guild.wishlists
+      .filter(w => w.itemName === it.itemName)
+      .sort((a, b) => {
+        const ma = members.findIndex(m => m.name === a.memberName);
+        const mb = members.findIndex(m => m.name === b.memberName);
+        return ma - mb;
+      })
+      .map(w => w.memberName);
+    const wisherBadge = wishers.length === 0
+      ? '<span class="wisher-none">なし</span>'
+      : `<span class="wisher-count">${wishers.length}人</span><span class="wisher-names">${wishers.join('・')}</span>`;
+    return `
+      <tr>
+        <td>${it.itemName}</td>
+        <td>${it.slotCount}</td>
+        <td class="wisher-cell">${wisherBadge}</td>
+        <td><button class="btn-danger" data-del-item="${it.id}">削除</button></td>
+      </tr>`;
+  }).join('');
   $('item-table-body').querySelectorAll('[data-del-item]').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.deleteItem(session.guildName, btn.dataset.delItem);

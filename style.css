@@ -466,6 +466,11 @@ button:disabled {
 .confirm-winner { font-weight: bold; color: #2e7d32; font-size: 0.9rem; flex: 1; }
 .all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
 
+.wisher-cell { font-size: 0.85rem; }
+.wisher-count { font-weight: bold; color: var(--color-purple); margin-right: 6px; }
+.wisher-names { color: var(--color-text-muted); font-size: 0.8rem; }
+.wisher-none { color: var(--color-border); font-size: 0.8rem; }
+
 .next-list { display: flex; flex-direction: column; }
 .next-row {
   display: flex;
