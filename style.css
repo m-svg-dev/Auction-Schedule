@@ -464,6 +464,18 @@ button:disabled {
 }
 .btn-confirm:hover { background: #1b5e20; transform: scale(1.02); }
 .confirm-winner { font-weight: bold; color: #2e7d32; font-size: 0.9rem; flex: 1; }
+.btn-cancel-confirm {
+  background: transparent;
+  border: 1px solid #bdbdbd;
+  color: #9e9e9e;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s;
+}
+.btn-cancel-confirm:hover { border-color: #e0506a; color: #e0506a; }
 .all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
 
 .item-wins-block {

@@ -258,6 +258,7 @@ function renderAdminDashboard() {
             ? `<div class="confirm-row confirmed">
                 <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
                 <span class="confirm-winner">✓ ${a.memberName || '—'}</span>
+                <button class="btn-cancel-confirm" data-idx="${idx}">取消</button>
                </div>`
             : `<div class="confirm-row">
                 <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
@@ -270,6 +271,19 @@ function renderAdminDashboard() {
           ).join('')}
         </div>
       </div>`;
+
+    document.querySelectorAll('.btn-cancel-confirm').forEach(btn => {
+      btn.addEventListener('click', () => withBusyAction(btn, async () => {
+        const idx = +btn.dataset.idx;
+        const updated = thisWeekAssignments.map((a, i) =>
+          i === idx ? { ...a, confirmed: false } : a
+        );
+        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
+        await refreshGuild();
+        renderAdminDashboard();
+        showToast('落札の確認を取り消しました');
+      }));
+    });
 
     document.querySelectorAll('.btn-confirm').forEach(btn => {
       btn.addEventListener('click', () => withBusyAction(btn, async () => {
