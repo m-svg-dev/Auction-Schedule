@@ -985,7 +985,11 @@ function renderCalendar() {
   const week = currentCalendarWeek;
   $('calendar-week-label').textContent = `${formatSunday(week)}（${formatWeekRange(week)}）`;
 
-  if (calendarState?.week !== week) initCalendarState(week);
+  // 未保存の編集中（dirty=true）のみ状態を保持し、それ以外は常に最新データで再初期化する
+  // ※ navigateTo() が refreshGuild() を呼んだ後にここに来るので currentGuild は常に最新
+  if (!(calendarState?.week === week && calendarState?.dirty)) {
+    initCalendarState(week);
+  }
 
   // 参加状況トグル（管理者のみ）
   const statusEl = $('calendar-member-status');
