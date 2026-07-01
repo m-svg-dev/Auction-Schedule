@@ -394,6 +394,22 @@ button:disabled {
   outline: none;
 }
 
+.dashboard-wins-title { margin: 20px 0 8px; font-size: 1rem; color: var(--color-text-muted); }
+.wins-table { display: flex; flex-direction: column; gap: 8px; }
+.wins-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.wins-name { width: 90px; font-size: 0.9rem; flex-shrink: 0; }
+.wins-bar-wrap { flex: 1; height: 8px; background: var(--color-bg); border-radius: 999px; overflow: hidden; }
+.wins-bar { height: 100%; background: linear-gradient(90deg, var(--color-blue), var(--color-purple)); border-radius: 999px; transition: width 0.3s; }
+.wins-count { width: 36px; text-align: right; font-size: 0.85rem; font-weight: bold; color: var(--color-purple); flex-shrink: 0; }
+
 .assign-block {
   background: #fff;
   border-radius: var(--radius);

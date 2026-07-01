@@ -242,6 +242,30 @@ function renderAdminDashboard() {
       <div class="value">${c.value}</div>
     </div>
   `).join('');
+
+  // 累計落札数テーブル
+  const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
+  const winCounts = Object.fromEntries(members.map(m => [m.name, 0]));
+  guild.assignments.filter(a => a.memberName).forEach(a => {
+    if (winCounts[a.memberName] !== undefined) winCounts[a.memberName]++;
+  });
+  const maxWins = Math.max(0, ...Object.values(winCounts));
+
+  $('dashboard-wins').innerHTML = members.length === 0 ? '' : `
+    <h3 class="dashboard-wins-title">メンバー落札数</h3>
+    <div class="wins-table">
+      ${members.map(m => {
+        const w = winCounts[m.name] || 0;
+        const pct = maxWins > 0 ? Math.round((w / maxWins) * 100) : 0;
+        return `
+          <div class="wins-row">
+            <span class="wins-name">${m.name}</span>
+            <div class="wins-bar-wrap"><div class="wins-bar" style="width:${pct}%"></div></div>
+            <span class="wins-count">${w}回</span>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
 }
 
 function summarizeAssignments(list) {
@@ -547,11 +571,11 @@ $('form-add-unavailable').addEventListener('submit', e => {
 // --- 管理者：自動割り当て ---
 
 // メモリ上だけで複数週分の割り当てを計算する（Firestoreは触らない）
+// assignments を週ごとに積み上げることで、後続週の累計落札数計算に反映させる
 function runMultipleWeeksInMemory(guild, startWeek, count) {
   const guildState = {
     ...guild,
     assignments: [...guild.assignments],
-    itemRotationPointers: { ...guild.itemRotationPointers },
   };
   const allAssignments = [];
   for (let i = 0; i < count; i++) {
@@ -559,10 +583,9 @@ function runMultipleWeeksInMemory(guild, startWeek, count) {
     const result = generateWeekAssignments(guildState, week);
     guildState.assignments = guildState.assignments.filter(a => a.week !== week);
     guildState.assignments.push(...result.assignments);
-    guildState.itemRotationPointers = result.updatedPointers;
     allAssignments.push(...result.assignments);
   }
-  return { allAssignments, finalPointers: guildState.itemRotationPointers };
+  return { allAssignments, finalPointers: {} };
 }
 
 function renderAutoAssign() {
