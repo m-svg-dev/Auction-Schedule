@@ -183,9 +183,11 @@
     <!-- 管理者：メンバー検索 -->
     <section id="view-member-search" class="view hidden">
       <h2>メンバー検索</h2>
-      <input type="text" id="search-input" placeholder="メンバー名で検索">
+      <select id="search-select" class="search-member-select">
+        <option value="">メンバーを選択してください</option>
+      </select>
       <table class="data-table">
-        <thead><tr><th>週</th><th>アイテム</th><th>枠</th></tr></thead>
+        <thead><tr><th>日付</th><th>アイテム</th><th>枠</th></tr></thead>
         <tbody id="search-result-body"></tbody>
       </table>
     </section>

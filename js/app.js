@@ -960,22 +960,27 @@ $('calendar-next').addEventListener('click', async () => {
 // --- 管理者：メンバー検索 ---
 
 function renderMemberSearch() {
-  $('search-result-body').innerHTML = '';
+  const members = [...currentGuild.members].sort((a, b) => a.orderNo - b.orderNo);
+  const sel = $('search-select');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">メンバーを選択してください</option>'
+    + members.map(m => `<option value="${m.name}" ${m.name === current ? 'selected' : ''}>${m.name}</option>`).join('');
+  showMemberSearchResults(current);
 }
 
-$('search-input').addEventListener('input', async () => {
-  const query = $('search-input').value.trim();
-  if (!query) {
+function showMemberSearchResults(memberName) {
+  if (!memberName) {
     $('search-result-body').innerHTML = '';
     return;
   }
-  await refreshGuild();
-  const guild = currentGuild;
-  const memberName = guild.members.find(m => m.name.includes(query))?.name;
-  const results = memberName ? store.searchAssignmentsByMember(guild, memberName) : [];
+  const results = store.searchAssignmentsByMember(currentGuild, memberName);
   $('search-result-body').innerHTML = results.length
-    ? results.map(a => `<tr><td>${a.week}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
-    : '<tr><td colspan="3">該当する担当がありません</td></tr>';
+    ? results.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${a.itemName}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    : '<tr><td colspan="3">担当の記録がありません</td></tr>';
+}
+
+$('search-select').addEventListener('change', () => {
+  showMemberSearchResults($('search-select').value);
 });
 
 // --- メンバー：自分の予定 ---
