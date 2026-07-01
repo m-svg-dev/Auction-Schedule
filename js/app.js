@@ -1,6 +1,6 @@
 import * as store from './storage.js';
 import { generateWeekAssignments } from './rotation.js';
-import { getCurrentWeek, addWeeks, formatWeekRange } from './calendar.js';
+import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday } from './calendar.js';
 
 const SESSION_KEY = 'guildAuctionSession_v1';
 
@@ -546,10 +546,73 @@ $('form-add-unavailable').addEventListener('submit', e => {
 
 // --- 管理者：自動割り当て ---
 
-function renderAutoAssign() {
-  $('assign-week').value = $('assign-week').value || getCurrentWeek();
-  $('assign-result-body').innerHTML = '';
+// メモリ上だけで複数週分の割り当てを計算する（Firestoreは触らない）
+function runMultipleWeeksInMemory(guild, startWeek, count) {
+  const guildState = {
+    ...guild,
+    assignments: [...guild.assignments],
+    itemRotationPointers: { ...guild.itemRotationPointers },
+  };
+  const allAssignments = [];
+  for (let i = 0; i < count; i++) {
+    const week = addWeeks(startWeek, i);
+    const result = generateWeekAssignments(guildState, week);
+    guildState.assignments = guildState.assignments.filter(a => a.week !== week);
+    guildState.assignments.push(...result.assignments);
+    guildState.itemRotationPointers = result.updatedPointers;
+    allAssignments.push(...result.assignments);
+  }
+  return { allAssignments, finalPointers: guildState.itemRotationPointers };
 }
+
+function renderAutoAssign() {
+  const thisWeek = getCurrentWeek();
+  if (!$('assign-week').value) $('assign-week').value = thisWeek;
+
+  const weekCount = parseInt($('bulk-weeks-count').value, 10) || 4;
+  const endWeek = addWeeks(thisWeek, weekCount - 1);
+  $('bulk-assign-range-label').textContent =
+    `${formatSunday(thisWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+
+  $('assign-result-body').innerHTML = '';
+  $('bulk-assign-summary').innerHTML = '';
+}
+
+$('bulk-weeks-count').addEventListener('input', () => {
+  const thisWeek = getCurrentWeek();
+  const weekCount = parseInt($('bulk-weeks-count').value, 10) || 1;
+  const endWeek = addWeeks(thisWeek, weekCount - 1);
+  $('bulk-assign-range-label').textContent =
+    `${formatSunday(thisWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+});
+
+$('form-bulk-assign').addEventListener('submit', e => {
+  e.preventDefault();
+  withBusyButton(e.target, async () => {
+    const weekCount = parseInt($('bulk-weeks-count').value, 10);
+    if (!weekCount || weekCount < 1) return;
+    const guild = currentGuild;
+    if (guild.members.length === 0 || guild.items.length === 0) {
+      showToast('メンバーとアイテムを登録してから実行してください');
+      return;
+    }
+    const thisWeek = getCurrentWeek();
+    const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, thisWeek, weekCount);
+    await store.applyBulkAssignments(session.guildName, allAssignments, finalPointers);
+    await refreshGuild();
+
+    const endWeek = addWeeks(thisWeek, weekCount - 1);
+    showToast(`${formatSunday(thisWeek)}〜${formatSunday(endWeek)} の${weekCount}週分を実行しました`);
+
+    const weekSummary = [];
+    for (let i = 0; i < weekCount; i++) {
+      const week = addWeeks(thisWeek, i);
+      const rows = allAssignments.filter(a => a.week === week);
+      weekSummary.push(`<div class="bulk-week-row"><strong>${formatSunday(week)}</strong> ${rows.map(a => `${a.itemName}${slotMark(a.slotNo)}:${a.memberName || '未割当'}`).join(' / ')}</div>`);
+    }
+    $('bulk-assign-summary').innerHTML = weekSummary.join('');
+  });
+});
 
 $('form-auto-assign').addEventListener('submit', e => {
   e.preventDefault();
@@ -565,7 +628,7 @@ $('form-auto-assign').addEventListener('submit', e => {
     await store.applyWeekAssignments(session.guildName, week, result);
     await refreshGuild();
     renderAssignResult(result.assignments);
-    showToast(`${week} の割り当てを実行しました`);
+    showToast(`${formatSunday(week)} の割り当てを実行しました`);
   });
 });
 
@@ -574,7 +637,6 @@ function renderAssignResult(assignments) {
     <tr>
       <td>${a.itemName}${slotMark(a.slotNo)}</td>
       <td>${a.memberName || '（割り当て不可）'}</td>
-      <td>${a.isCarryOver ? '<span class="carry-badge">繰り越し</span>' : '-'}</td>
     </tr>
   `).join('');
 }
@@ -582,7 +644,7 @@ function renderAssignResult(assignments) {
 // --- カレンダー ---
 
 function renderCalendar() {
-  $('calendar-week-label').textContent = `${currentCalendarWeek}（${formatWeekRange(currentCalendarWeek)}）`;
+  $('calendar-week-label').textContent = `${formatSunday(currentCalendarWeek)}（${formatWeekRange(currentCalendarWeek)}）`;
   const assignments = store.getAssignmentsForWeek(currentGuild, currentCalendarWeek);
   $('calendar-table-body').innerHTML = assignments.length
     ? assignments.map(a => `

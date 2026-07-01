@@ -42,3 +42,11 @@ export function formatWeekRange(weekStr) {
   const fmt = d => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
   return `${fmt(monday)}〜${fmt(sunday)}`;
 }
+
+// オークション開催日（その週の日曜日）を「7月6日（日）」形式で返す
+export function formatSunday(weekStr) {
+  const monday = getMondayOfISOWeek(weekStr);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return `${sunday.getUTCMonth() + 1}月${sunday.getUTCDate()}日（日）`;
+}

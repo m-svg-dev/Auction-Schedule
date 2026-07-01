@@ -394,6 +394,30 @@ button:disabled {
   outline: none;
 }
 
+.assign-block {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.assign-block h3 { margin: 0 0 8px; font-size: 1rem; color: var(--color-text); }
+
+.assign-range-label {
+  font-size: 0.95rem;
+  color: var(--color-purple);
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.bulk-week-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.bulk-week-row:last-child { border-bottom: none; }
+
 .week-nav {
   display: flex;
   align-items: center;

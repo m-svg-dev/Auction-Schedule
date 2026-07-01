@@ -130,15 +130,30 @@
     <!-- 管理者：自動割り当て -->
     <section id="view-auto-assign" class="view hidden">
       <h2>自動割り当て</h2>
-      <p class="hint">対象週を選んで実行すると、登録済みの希望アイテム順位とイン不可情報をもとに、その週の担当を自動で決めます。</p>
-      <form id="form-auto-assign" class="inline-form">
-        <label>対象週 <input type="week" id="assign-week" required></label>
-        <button type="submit" class="btn-primary">割り当てを実行</button>
-      </form>
-      <table class="data-table">
-        <thead><tr><th>アイテム枠</th><th>担当</th><th>繰り越し</th></tr></thead>
-        <tbody id="assign-result-body"></tbody>
-      </table>
+
+      <div class="assign-block">
+        <h3>一括実行（おすすめ）</h3>
+        <p class="hint">今週の日曜日から指定した週数分をまとめて割り当てます。メンバー人数分でちょうど1周する週数を入れると均等になります。</p>
+        <p id="bulk-assign-range-label" class="assign-range-label"></p>
+        <form id="form-bulk-assign" class="inline-form">
+          <label>今週から <input type="number" id="bulk-weeks-count" min="1" max="52" value="4" required> 週分</label>
+          <button type="submit" class="btn-primary">一括実行</button>
+        </form>
+        <div id="bulk-assign-summary"></div>
+      </div>
+
+      <div class="assign-block">
+        <h3>特定の週を実行</h3>
+        <p class="hint">1週分だけ指定して実行したい場合に使います。</p>
+        <form id="form-auto-assign" class="inline-form">
+          <label>対象週 <input type="week" id="assign-week" required></label>
+          <button type="submit" class="btn-primary">実行</button>
+        </form>
+        <table class="data-table">
+          <thead><tr><th>アイテム枠</th><th>担当</th></tr></thead>
+          <tbody id="assign-result-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- カレンダー（管理者・メンバー共通） -->
