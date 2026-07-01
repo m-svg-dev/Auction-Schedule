@@ -218,6 +218,19 @@ async function navigateTo(viewId) {
   }
 }
 
+// 日曜日一覧のプルダウンを生成（pastWeeks週前〜futureWeeks週後）
+function populateSundaySelect(selectId, currentValue, pastWeeks = 2, futureWeeks = 12) {
+  const sel = $(selectId);
+  const thisWeek = getCurrentWeek();
+  const opts = ['<option value="">日曜日を選択してください</option>'];
+  for (let i = -pastWeeks; i <= futureWeeks; i++) {
+    const week = addWeeks(thisWeek, i);
+    const label = formatSunday(week);
+    opts.push(`<option value="${week}" ${week === currentValue ? 'selected' : ''}>${label}</option>`);
+  }
+  sel.innerHTML = opts.join('');
+}
+
 // --- 管理者：ダッシュボード ---
 
 // メンバー選択肢を生成。希望者には ★ を付け、文字色を紫にする（iOS非対応のためテキスト記号も併用）
@@ -676,17 +689,17 @@ $('form-add-wishlist-item').addEventListener('submit', e => {
 
 function renderUnavailableManagement() {
   const guild = currentGuild;
-  const select = $('unavailable-member');
-  select.innerHTML = guild.members
+  $('unavailable-member').innerHTML = guild.members
     .sort((a, b) => a.orderNo - b.orderNo)
     .map(m => `<option value="${m.name}">${m.name}</option>`)
     .join('');
+  populateSundaySelect('unavailable-week', $('unavailable-week').value, 0, 12);
 
   const rows = [...guild.unavailableWeeks].sort((a, b) => a.week.localeCompare(b.week));
   $('unavailable-table-body').innerHTML = rows.map(u => `
     <tr>
       <td>${u.memberName}</td>
-      <td>${u.week}</td>
+      <td>${formatSundayShort(u.week)}</td>
       <td>${u.reason || '-'}</td>
       <td><button class="btn-danger" data-del-unavail="${u.id}">削除</button></td>
     </tr>
@@ -704,11 +717,10 @@ $('form-add-unavailable').addEventListener('submit', e => {
   e.preventDefault();
   withBusyButton(e.target, async () => {
     const memberName = $('unavailable-member').value;
-    const week = $('unavailable-week').value.trim();
+    const week = $('unavailable-week').value;
     const reason = $('unavailable-reason').value.trim();
     if (!memberName || !week) return;
     await store.addUnavailable(session.guildName, memberName, week, reason);
-    $('unavailable-week').value = '';
     $('unavailable-reason').value = '';
     await refreshGuild();
     renderUnavailableManagement();
@@ -1011,13 +1023,16 @@ function renderMemberHome() {
 
 function renderMemberUnavailableRequest() {
   const guild = currentGuild;
+  populateSundaySelect('member-unavailable-week', $('member-unavailable-week').value, 0, 12);
+  checkUnavailConflict($('member-unavailable-week').value);
+
   const mine = guild.unavailableWeeks
     .filter(u => u.memberName === session.memberName)
     .sort((a, b) => a.week.localeCompare(b.week));
   $('member-unavailable-table-body').innerHTML = mine.length
     ? mine.map(u => `
         <tr>
-          <td>${u.week}</td>
+          <td class="date-cell">${formatSundayShort(u.week)}</td>
           <td>${u.reason || '-'}</td>
           <td><button class="btn-danger" data-del-my-unavail="${u.id}">取消</button></td>
         </tr>
@@ -1032,14 +1047,29 @@ function renderMemberUnavailableRequest() {
   });
 }
 
+function checkUnavailConflict(week) {
+  const warning = $('unavail-conflict-warning');
+  if (!week) { warning.classList.add('hidden'); return; }
+  const hasAssignment = currentGuild.assignments.some(
+    a => a.week === week && a.memberName === session.memberName
+  );
+  if (hasAssignment) {
+    warning.textContent = `⚠ ${formatSundayShort(week)} はすでに担当に割り当てられています。申請しても既存の割り当ては自動では変わりません。管理者にカレンダーから変更してもらってください。`;
+    warning.classList.remove('hidden');
+  } else {
+    warning.classList.add('hidden');
+  }
+}
+
+$('member-unavailable-week').addEventListener('change', e => checkUnavailConflict(e.target.value));
+
 $('form-member-unavailable').addEventListener('submit', e => {
   e.preventDefault();
   withBusyButton(e.target, async () => {
-    const week = $('member-unavailable-week').value.trim();
+    const week = $('member-unavailable-week').value;
     const reason = $('member-unavailable-reason').value.trim();
     if (!week) return;
     await store.addUnavailable(session.guildName, session.memberName, week, reason);
-    $('member-unavailable-week').value = '';
     $('member-unavailable-reason').value = '';
     await refreshGuild();
     renderMemberUnavailableRequest();

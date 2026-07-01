@@ -122,12 +122,12 @@
       <p class="hint">メンバーがオークションに参加できない週を登録します。自動割り当てを実行するとき、登録された週はそのメンバーをスキップします。</p>
       <form id="form-add-unavailable" class="inline-form">
         <label>メンバー <select id="unavailable-member"></select></label>
-        <label>対象週 <input type="week" id="unavailable-week" required></label>
+        <label>対象週（日曜日） <select id="unavailable-week" required></select></label>
         <input type="text" id="unavailable-reason" placeholder="理由（任意）">
         <button type="submit" class="btn-primary">登録</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>メンバー</th><th>対象週</th><th>理由</th><th></th></tr></thead>
+        <thead><tr><th>メンバー</th><th>対象日</th><th>理由</th><th></th></tr></thead>
         <tbody id="unavailable-table-body"></tbody>
       </table>
     </section>
@@ -206,14 +206,15 @@
     <!-- メンバー：イン不可申請 -->
     <section id="view-member-unavailable-request" class="view hidden">
       <h2>イン不可申請</h2>
-      <p class="hint">自分がオークションに参加できない週を申請します。申請した週は自動割り当てであなたがスキップされます。</p>
+      <p class="hint">参加できない日曜日を選んで申請します。次回の自動割り当て実行時にあなたがスキップされます。</p>
+      <div id="unavail-conflict-warning" class="unavail-conflict hidden"></div>
       <form id="form-member-unavailable" class="inline-form">
-        <label>対象週 <input type="week" id="member-unavailable-week" required></label>
+        <label>対象日（日曜日） <select id="member-unavailable-week" required></select></label>
         <input type="text" id="member-unavailable-reason" placeholder="理由（任意）">
         <button type="submit" class="btn-primary">申請する</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>対象週</th><th>理由</th><th></th></tr></thead>
+        <thead><tr><th>対象日</th><th>理由</th><th></th></tr></thead>
         <tbody id="member-unavailable-table-body"></tbody>
       </table>
     </section>

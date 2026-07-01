@@ -503,6 +503,17 @@ button:disabled {
   font-weight: bold;
 }
 
+.unavail-conflict {
+  background: #fff8e1;
+  border: 1px solid #f9a825;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #7a5c00;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
 .wish-legend {
   margin: 8px 0 0;
   font-size: 0.78rem;
