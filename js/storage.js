@@ -271,12 +271,18 @@ export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
 }
 
 // 欠席連絡承認: その週のその人の担当をキャンセル（memberName を null に）
+// 欠席連絡承認: confirmed:true（落札確認済み）の記録は保護し、未確認のみキャンセルする
 export function cancelMemberAssignment(guildName, memberName, week) {
   return updateGuild(guildName, guild => {
     guild.assignments
-      .filter(a => a.week === week && a.memberName === memberName)
+      .filter(a => a.week === week && a.memberName === memberName && a.confirmed !== true)
       .forEach(a => { a.memberName = null; a.confirmed = false; });
   });
+}
+
+// 既に落札確認済みの割り当てがあるか確認する（UIの警告表示用）
+export function hasConfirmedAssignment(guild, memberName, week) {
+  return guild.assignments.some(a => a.week === week && a.memberName === memberName && a.confirmed === true);
 }
 
 // 週の落札確認（名前変更・confirmed=true の保存）

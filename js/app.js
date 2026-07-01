@@ -2,6 +2,17 @@ import * as store from './storage.js';
 import { generateWeekAssignments } from './rotation.js';
 import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday, formatSundayShort } from './calendar.js';
 
+// XSS対策: ユーザー入力値をinnerHTMLに埋め込む前に必ずこの関数を通す
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const SESSION_KEY = 'guildAuctionSession_v1';
 
 let session = loadSession();
@@ -317,9 +328,9 @@ function populateSundaySelect(selectId, currentValue, pastWeeks = 2, futureWeeks
 function memberOptions(members, itemName, selectedName) {
   return members.map(m => {
     const isWisher = currentGuild.wishlists.some(w => w.memberName === m.name && w.itemName === itemName);
-    const label = isWisher ? `★ ${m.name}` : m.name;
+    const label = isWisher ? `★ ${escapeHtml(m.name)}` : escapeHtml(m.name);
     const style = isWisher ? ' style="color:#7c4dff;font-weight:bold"' : '';
-    return `<option value="${m.name}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
+    return `<option value="${escapeHtml(m.name)}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
   }).join('');
 }
 
@@ -785,21 +796,25 @@ function renderRequestManagement() {
   } else {
     html += pending.map(u => {
       const assignment = guild.assignments.filter(a => a.week === u.week && a.memberName === u.memberName);
-      const assignmentInfo = assignment.length > 0
-        ? `<div class="req-assignment-warn">⚠ 担当あり: ${assignment.map(a => `${a.itemName}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
-        : '<div class="req-assignment-ok">担当なし（割当取消は不要）</div>';
+      const hasConfirmed = assignment.some(a => a.confirmed === true);
+      const hasUnconfirmed = assignment.some(a => a.confirmed !== true);
+      const assignmentInfo = hasConfirmed
+        ? `<div class="req-assignment-warn req-assignment-confirmed">⚠ 落札確認済みの担当あり: ${assignment.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('・')} → 承認しても確認済み記録は変更されません。カレンダーから手動で変更してください。</div>`
+        : hasUnconfirmed
+          ? `<div class="req-assignment-warn">⚠ 担当あり: ${assignment.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
+          : '<div class="req-assignment-ok">担当なし（割当取消は不要）</div>';
       return `
         <div class="req-card pending-card">
           <div class="req-header">
-            <span class="req-member">${u.memberName}</span>
+            <span class="req-member">${escapeHtml(u.memberName)}</span>
             <span class="req-date">${formatSundayShort(u.week)}</span>
             <span class="req-status-badge pending">申請中</span>
           </div>
-          ${u.reason ? `<div class="req-reason">理由: ${u.reason}</div>` : ''}
+          ${u.reason ? `<div class="req-reason">理由: ${escapeHtml(u.reason)}</div>` : ''}
           ${assignmentInfo}
           <div class="req-actions">
-            <button class="btn-approve" data-id="${u.id}" data-member="${u.memberName}" data-week="${u.week}" data-has-assign="${assignment.length > 0}">承認${assignment.length > 0 ? '・割当取消' : ''}</button>
-            <button class="btn-reject" data-id="${u.id}">拒否</button>
+            <button class="btn-approve" data-id="${escapeHtml(u.id)}" data-member="${escapeHtml(u.memberName)}" data-week="${escapeHtml(u.week)}" data-has-assign="${hasUnconfirmed}">承認${hasUnconfirmed ? '・割当取消' : ''}</button>
+            <button class="btn-reject" data-id="${escapeHtml(u.id)}">拒否</button>
           </div>
         </div>`;
     }).join('');
@@ -813,11 +828,11 @@ function renderRequestManagement() {
     html += history.map(u => `
       <div class="req-card history-card">
         <div class="req-header">
-          <span class="req-member">${u.memberName}</span>
+          <span class="req-member">${escapeHtml(u.memberName)}</span>
           <span class="req-date">${formatSundayShort(u.week)}</span>
-          <span class="req-status-badge ${u.status}">${u.status === 'approved' ? '✓ 承認済み' : '✗ 拒否済み'}</span>
+          <span class="req-status-badge ${u.status === 'approved' ? 'approved' : 'rejected'}">${u.status === 'approved' ? '✓ 承認済み' : '✗ 拒否済み'}</span>
         </div>
-        ${u.reason ? `<div class="req-reason">理由: ${u.reason}</div>` : ''}
+        ${u.reason ? `<div class="req-reason">理由: ${escapeHtml(u.reason)}</div>` : ''}
       </div>`).join('');
   }
 
@@ -860,9 +875,9 @@ function renderUnavailableManagement() {
   const rows = [...guild.unavailableWeeks].sort((a, b) => a.week.localeCompare(b.week));
   $('unavailable-table-body').innerHTML = rows.map(u => `
     <tr>
-      <td>${u.memberName}</td>
+      <td>${escapeHtml(u.memberName)}</td>
       <td>${formatSundayShort(u.week)}</td>
-      <td>${u.reason || '-'}</td>
+      <td>${escapeHtml(u.reason) || '-'}</td>
       <td><button class="btn-danger" data-del-unavail="${u.id}">削除</button></td>
     </tr>
   `).join('');
@@ -1234,9 +1249,9 @@ function renderMemberUnavailableRequest() {
           : '<span class="req-status-badge pending">申請中</span>';
         return `<tr>
           <td class="date-cell">${formatSundayShort(u.week)}</td>
-          <td>${u.reason || '-'}</td>
+          <td>${escapeHtml(u.reason) || '-'}</td>
           <td>${badge}</td>
-          <td>${u.status === 'pending' ? `<button class="btn-danger" data-del-my-unavail="${u.id}">取消</button>` : ''}</td>
+          <td>${u.status === 'pending' ? `<button class="btn-danger" data-del-my-unavail="${escapeHtml(u.id)}">取消</button>` : ''}</td>
         </tr>`;
       }).join('')
     : '<tr><td colspan="4">申請はありません</td></tr>';
