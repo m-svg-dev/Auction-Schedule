@@ -558,13 +558,34 @@ button:disabled {
   margin-bottom: 12px;
 }
 
-.bulk-week-row {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border);
-  font-size: 0.9rem;
-  line-height: 1.6;
+.bulk-week-card {
+  background: #fff;
+  border-radius: var(--radius);
+  margin-top: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
-.bulk-week-row:last-child { border-bottom: none; }
+.bulk-week-title {
+  background: var(--color-sidebar);
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+.bulk-week-table { display: flex; flex-direction: column; }
+.bulk-week-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.88rem;
+}
+.bulk-week-item:last-child { border-bottom: none; }
+.bulk-item-name { flex: 1; color: var(--color-text); }
+.bulk-item-slot { color: var(--color-text-muted); flex-shrink: 0; }
+.bulk-item-member { font-weight: bold; color: var(--color-purple); min-width: 80px; text-align: right; flex-shrink: 0; }
+.bulk-item-unassigned { color: var(--color-text-muted); font-weight: normal; }
 
 .calendar-member-status {
   background: #fff;

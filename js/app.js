@@ -732,7 +732,18 @@ $('form-bulk-assign').addEventListener('submit', e => {
     for (let i = 0; i < weekCount; i++) {
       const week = addWeeks(thisWeek, i);
       const rows = allAssignments.filter(a => a.week === week);
-      weekSummary.push(`<div class="bulk-week-row"><strong>${formatSunday(week)}</strong> ${rows.map(a => `${a.itemName}${slotMark(a.slotNo)}:${a.memberName || '未割当'}`).join(' / ')}</div>`);
+      weekSummary.push(`
+        <div class="bulk-week-card">
+          <div class="bulk-week-title">${formatSunday(week)}</div>
+          <div class="bulk-week-table">
+            ${rows.map(a => `
+              <div class="bulk-week-item">
+                <span class="bulk-item-name">${a.itemName}</span>
+                <span class="bulk-item-slot">${slotMark(a.slotNo)}</span>
+                <span class="bulk-item-member ${a.memberName ? '' : 'bulk-item-unassigned'}">${a.memberName || '未割当'}</span>
+              </div>`).join('')}
+          </div>
+        </div>`);
     }
     $('bulk-assign-summary').innerHTML = weekSummary.join('');
   });
