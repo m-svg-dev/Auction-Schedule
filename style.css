@@ -776,14 +776,106 @@ button:disabled {
   transform: translateX(-50%) translateY(0);
 }
 
+/* --- ボトムナビゲーション --- */
+.bottom-nav {
+  display: none; /* デスクトップでは非表示 */
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--color-sidebar);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0); /* iPhone ホームバー対応 */
+}
+.bottom-nav-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  font-size: 0.68rem;
+  gap: 3px;
+  transition: color 0.15s;
+  min-height: 56px;
+}
+.bottom-nav-tab .tab-icon { font-size: 1.3rem; line-height: 1; }
+.bottom-nav-tab.active { color: var(--color-gold); }
+.bottom-nav-tab:active { color: #fff; }
+
+/* --- 設定シート --- */
+.settings-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.settings-sheet.hidden { display: none; }
+.settings-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+}
+.settings-sheet-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0));
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.settings-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  font-weight: bold;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+.settings-sheet-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.settings-sheet-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  background: var(--color-bg);
+  border: none;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.settings-sheet-item:hover { background: #e8e9f0; }
+
 /* --- レスポンシブ --- */
 @media (max-width: 760px) {
   #app-container { flex-direction: column; }
   #sidebar { width: 100%; }
-  #sidebar-nav { flex-direction: row; flex-wrap: wrap; padding: 8px; gap: 4px; }
-  .nav-item { border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; font-size: 0.85rem; }
-  .nav-item.active { border-left: none; border-bottom-color: var(--color-gold); }
-  #content-area { padding: 20px 16px; }
+  /* サイドバーナビはボトムナビに置き換え → 非表示 */
+  #sidebar-nav { display: none; }
+  /* サイドバーヘッダーをコンパクトな上部バーとして使用 */
+  #sidebar { padding: 0; }
+  .sidebar-header { padding: 10px 14px; }
+  .sidebar-header h1 { font-size: 0.95rem; margin: 0; }
+  #content-area { padding: 16px 14px 80px; } /* ボトムナビ分の余白 */
   .data-table { font-size: 0.8rem; }
   .data-table th, .data-table td { padding: 8px; }
+  /* ボトムナビを表示 */
+  .bottom-nav { display: flex; }
 }

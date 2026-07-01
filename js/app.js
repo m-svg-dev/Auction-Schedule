@@ -141,6 +141,8 @@ $('role-member-btn').addEventListener('click', () => {
 
 $('logout-btn').addEventListener('click', () => {
   clearSession();
+  $('bottom-nav').classList.add('hidden');
+  $('bottom-nav').innerHTML = '';
   $('app-container').classList.add('hidden');
   $('auth-container').classList.remove('hidden');
   $('form-login').reset();
@@ -167,6 +169,59 @@ const MEMBER_NAV = [
   { id: 'calendar', label: 'カレンダー' },
   { id: 'member-unavailable-request', label: '欠席連絡' },
 ];
+
+// モバイル ボトムナビ定義
+const ADMIN_BOTTOM_TABS = [
+  { id: 'admin-dashboard', icon: '🏠', label: 'ホーム' },
+  { id: 'calendar',        icon: '📅', label: 'カレンダー' },
+  { id: 'auto-assign',     icon: '⚡', label: '割り当て' },
+  { id: 'request-management', icon: '📝', label: '欠席連絡' },
+  { id: 'settings',        icon: '⚙️', label: '設定' },
+];
+
+const MEMBER_BOTTOM_TABS = [
+  { id: 'member-home',                icon: '🏠', label: 'ホーム' },
+  { id: 'calendar',                   icon: '📅', label: 'カレンダー' },
+  { id: 'member-unavailable-request', icon: '📝', label: '欠席連絡' },
+];
+
+// 設定シートの項目（管理者専用）
+const ADMIN_SETTINGS_ITEMS = [
+  { id: 'member-management',    label: 'メンバー管理' },
+  { id: 'item-management',      label: 'アイテム管理' },
+  { id: 'wishlist-management',  label: '希望アイテム管理' },
+  { id: 'unavailable-management', label: '欠席管理（直接登録）' },
+  { id: 'member-search',        label: 'メンバー検索' },
+];
+
+// ビューIDからボトムタブのIDを返す
+function getBottomTabForView(viewId) {
+  if (session.role !== 'admin') return viewId;
+  const settingsViews = new Set(['member-management','item-management','wishlist-management','unavailable-management','member-search']);
+  return settingsViews.has(viewId) ? 'settings' : viewId;
+}
+
+function openSettingsSheet() {
+  const sheet = $('settings-sheet');
+  const items = $('settings-sheet-items');
+  items.innerHTML = ADMIN_SETTINGS_ITEMS.map(it => `
+    <button class="settings-sheet-item" data-view="${it.id}">${it.label}</button>
+  `).join('');
+  items.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeSettingsSheet();
+      navigateTo(btn.dataset.view);
+    });
+  });
+  sheet.classList.remove('hidden');
+}
+
+function closeSettingsSheet() {
+  $('settings-sheet').classList.add('hidden');
+}
+
+$('settings-sheet-backdrop').addEventListener('click', closeSettingsSheet);
+$('settings-sheet-close').addEventListener('click', closeSettingsSheet);
 
 const RENDERERS = {
   'admin-dashboard': renderAdminDashboard,
@@ -200,6 +255,24 @@ async function enterApp() {
     navEl.appendChild(btn);
   });
 
+  // ボトムナビ（モバイル用）
+  const bottomTabs = session.role === 'admin' ? ADMIN_BOTTOM_TABS : MEMBER_BOTTOM_TABS;
+  const bottomNav = $('bottom-nav');
+  bottomNav.innerHTML = '';
+  bottomTabs.forEach(tab => {
+    const btn = document.createElement('button');
+    btn.className = 'bottom-nav-tab';
+    btn.dataset.view = tab.id;
+    btn.innerHTML = `<span class="tab-icon">${tab.icon}</span><span class="tab-label">${tab.label}</span>`;
+    if (tab.id === 'settings') {
+      btn.addEventListener('click', openSettingsSheet);
+    } else {
+      btn.addEventListener('click', () => navigateTo(tab.id));
+    }
+    bottomNav.appendChild(btn);
+  });
+  bottomNav.classList.remove('hidden');
+
   currentCalendarWeek = getCurrentWeek();
   await navigateTo(nav[0].id);
 }
@@ -207,6 +280,11 @@ async function enterApp() {
 async function navigateTo(viewId) {
   document.querySelectorAll('#sidebar-nav .nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
+  });
+  // ボトムナビのアクティブ状態を更新
+  const activeTab = getBottomTabForView(viewId);
+  document.querySelectorAll('#bottom-nav .bottom-nav-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === activeTab);
   });
   document.querySelectorAll('#content-area .view').forEach(el => el.classList.add('hidden'));
   $(`view-${viewId}`).classList.remove('hidden');
