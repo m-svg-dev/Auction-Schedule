@@ -220,6 +220,79 @@ async function navigateTo(viewId) {
 
 // --- 管理者：ダッシュボード ---
 
+function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
+  const allConfirmed = assignments.every(a => a.confirmed);
+  return `
+    <div class="auction-section ${isPast ? 'auction-past' : ''}" data-week="${week}">
+      <div class="auction-header">
+        <span class="auction-date ${isPast ? 'past-warn-label' : ''}">${isPast ? '⚠ ' : ''}${label}</span>
+        ${allConfirmed
+          ? '<span class="all-confirmed-badge">✓ 全件確認済み</span>'
+          : `<button class="btn-primary btn-sm confirm-all-week-btn" data-week="${week}">全件確認</button>`}
+      </div>
+      <div class="confirm-list">
+        ${assignments.map((a, idx) => a.confirmed
+          ? `<div class="confirm-row confirmed">
+              <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+              <span class="confirm-winner">✓ ${a.memberName || '—'}</span>
+              <button class="btn-cancel-confirm" data-week="${week}" data-idx="${idx}">取消</button>
+             </div>`
+          : `<div class="confirm-row">
+              <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+              <select class="confirm-select" data-week="${week}" data-idx="${idx}">
+                <option value="">（未割当）</option>
+                ${members.map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
+              </select>
+              <button class="btn-confirm" data-week="${week}" data-idx="${idx}">落札！</button>
+             </div>`
+        ).join('')}
+      </div>
+    </div>`;
+}
+
+function bindAuctionSectionEvents(week, assignments) {
+  const section = document.querySelector(`.auction-section[data-week="${week}"]`);
+  if (!section) return;
+
+  section.querySelectorAll('.btn-cancel-confirm').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const idx = +btn.dataset.idx;
+      const updated = assignments.map((a, i) => i === idx ? { ...a, confirmed: false } : a);
+      await store.confirmWeekAssignments(session.guildName, week, updated);
+      await refreshGuild();
+      renderAdminDashboard();
+      showToast('落札の確認を取り消しました');
+    }));
+  });
+
+  section.querySelectorAll('.btn-confirm').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const idx = +btn.dataset.idx;
+      const sel = section.querySelector(`.confirm-select[data-week="${week}"][data-idx="${idx}"]`);
+      const updated = assignments.map((a, i) =>
+        i === idx ? { ...a, memberName: sel?.value || a.memberName, confirmed: true } : a
+      );
+      await store.confirmWeekAssignments(session.guildName, week, updated);
+      await refreshGuild();
+      renderAdminDashboard();
+      showToast('落札を記録しました');
+    }));
+  });
+
+  section.querySelector('.confirm-all-week-btn')?.addEventListener('click', e => {
+    withBusyAction(e.currentTarget, async () => {
+      const updated = assignments.map((a, idx) => {
+        const sel = section.querySelector(`.confirm-select[data-week="${week}"][data-idx="${idx}"]`);
+        return { ...a, memberName: sel?.value || a.memberName, confirmed: true };
+      });
+      await store.confirmWeekAssignments(session.guildName, week, updated);
+      await refreshGuild();
+      renderAdminDashboard();
+      showToast(`${formatSunday(week)} の落札を全件記録しました`);
+    });
+  });
+}
+
 function renderAdminDashboard() {
   const guild = currentGuild;
   const thisWeek = getCurrentWeek();
@@ -234,84 +307,44 @@ function renderAdminDashboard() {
     <div class="stat-card"><div class="stat-val">${unavailableThisWeek}</div><div class="stat-label">今週イン不可</div></div>
   `;
 
+  // 未確認の過去週を検出（直近3週分まで）
+  const pastUnconfirmed = [...new Set(
+    guild.assignments
+      .filter(a => a.week < thisWeek && a.memberName && a.confirmed !== true)
+      .map(a => a.week)
+  )].sort().reverse().slice(0, 3);
+
   // 今週のオークション（落札確認）
   const thisWeekAssignments = store.getAssignmentsForWeek(guild, thisWeek);
+  let auctionHTML = '';
+
+  // 過去の未確認週（警告付き）
+  for (const week of pastUnconfirmed) {
+    const wa = store.getAssignmentsForWeek(guild, week);
+    if (wa.length > 0) {
+      auctionHTML += buildAuctionSectionHTML(week, wa, members, `${formatSunday(week)} 未確認の落札があります`, true);
+    }
+  }
+
+  // 今週
   if (thisWeekAssignments.length === 0) {
-    $('dashboard-auction-now').innerHTML = `
+    auctionHTML += `
       <div class="auction-section">
         <div class="auction-header"><span class="auction-date">${formatSunday(thisWeek)} 今週のオークション</span></div>
         <p class="empty-state">まだ割り当てがありません。「自動割り当て」から実行してください。</p>
       </div>`;
   } else {
-    const allConfirmed = thisWeekAssignments.every(a => a.confirmed);
-    const memberOptions = members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
-    $('dashboard-auction-now').innerHTML = `
-      <div class="auction-section">
-        <div class="auction-header">
-          <span class="auction-date">${formatSunday(thisWeek)} 今週のオークション</span>
-          ${allConfirmed
-            ? '<span class="all-confirmed-badge">✓ 全件確認済み</span>'
-            : '<button id="confirm-all-btn" class="btn-primary btn-sm">全件確認</button>'}
-        </div>
-        <div class="confirm-list">
-          ${thisWeekAssignments.map((a, idx) => a.confirmed
-            ? `<div class="confirm-row confirmed">
-                <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
-                <span class="confirm-winner">✓ ${a.memberName || '—'}</span>
-                <button class="btn-cancel-confirm" data-idx="${idx}">取消</button>
-               </div>`
-            : `<div class="confirm-row">
-                <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
-                <select class="confirm-select" data-idx="${idx}">
-                  <option value="">（未割当）</option>
-                  ${members.map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
-                </select>
-                <button class="btn-confirm" data-idx="${idx}">落札！</button>
-               </div>`
-          ).join('')}
-        </div>
-      </div>`;
-
-    document.querySelectorAll('.btn-cancel-confirm').forEach(btn => {
-      btn.addEventListener('click', () => withBusyAction(btn, async () => {
-        const idx = +btn.dataset.idx;
-        const updated = thisWeekAssignments.map((a, i) =>
-          i === idx ? { ...a, confirmed: false } : a
-        );
-        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
-        await refreshGuild();
-        renderAdminDashboard();
-        showToast('落札の確認を取り消しました');
-      }));
-    });
-
-    document.querySelectorAll('.btn-confirm').forEach(btn => {
-      btn.addEventListener('click', () => withBusyAction(btn, async () => {
-        const idx = +btn.dataset.idx;
-        const sel = document.querySelector(`.confirm-select[data-idx="${idx}"]`);
-        const updated = thisWeekAssignments.map((a, i) =>
-          i === idx ? { ...a, memberName: sel?.value || a.memberName, confirmed: true } : a
-        );
-        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
-        await refreshGuild();
-        renderAdminDashboard();
-        showToast('落札を記録しました');
-      }));
-    });
-
-    $('confirm-all-btn')?.addEventListener('click', () =>
-      withBusyAction($('confirm-all-btn'), async () => {
-        const updated = thisWeekAssignments.map((a, idx) => {
-          const sel = document.querySelector(`.confirm-select[data-idx="${idx}"]`);
-          return { ...a, memberName: sel?.value || a.memberName, confirmed: true };
-        });
-        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
-        await refreshGuild();
-        renderAdminDashboard();
-        showToast('今週の落札を全件記録しました');
-      })
-    );
+    auctionHTML += buildAuctionSectionHTML(thisWeek, thisWeekAssignments, members, `${formatSunday(thisWeek)} 今週のオークション`, false);
   }
+
+  $('dashboard-auction-now').innerHTML = auctionHTML;
+
+  // イベントバインド（過去週 + 今週）
+  for (const week of pastUnconfirmed) {
+    const wa = store.getAssignmentsForWeek(guild, week);
+    if (wa.length > 0) bindAuctionSectionEvents(week, wa);
+  }
+  if (thisWeekAssignments.length > 0) bindAuctionSectionEvents(thisWeek, thisWeekAssignments);
 
   // 次週の予定
   const nextWeekAssignments = store.getAssignmentsForWeek(guild, nextWeek);

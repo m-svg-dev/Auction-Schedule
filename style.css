@@ -477,6 +477,8 @@ button:disabled {
 }
 .btn-cancel-confirm:hover { border-color: #e0506a; color: #e0506a; }
 .all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
+.auction-past { border: 2px solid #f57c00; }
+.past-warn-label { color: #f57c00; }
 
 .card .value-text {
   font-size: 0.95rem;
