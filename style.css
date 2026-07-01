@@ -394,6 +394,90 @@ button:disabled {
   outline: none;
 }
 
+/* --- ダッシュボード再設計 --- */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 14px 10px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.stat-val { font-size: 1.8rem; font-weight: bold; color: var(--color-purple); line-height: 1; }
+.stat-label { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 4px; }
+
+.auction-section {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.auction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 8px;
+}
+.auction-date { font-weight: bold; color: var(--color-purple); font-size: 0.9rem; }
+.next-label { color: var(--color-text-muted); }
+.btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+
+.confirm-list { display: flex; flex-direction: column; gap: 8px; }
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+.confirm-row.confirmed { background: #f0fdf4; }
+.confirm-item { flex: 1; font-size: 0.85rem; min-width: 0; }
+.confirm-select {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  max-width: 100px;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.btn-confirm {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, transform 0.1s;
+}
+.btn-confirm:hover { background: #1b5e20; transform: scale(1.02); }
+.confirm-winner { font-weight: bold; color: #2e7d32; font-size: 0.9rem; flex: 1; }
+.all-confirmed-badge { font-size: 0.85rem; font-weight: bold; color: #2e7d32; }
+
+.next-list { display: flex; flex-direction: column; }
+.next-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.88rem;
+}
+.next-row:last-child { border-bottom: none; }
+.next-winner { color: var(--color-text-muted); font-size: 0.85rem; }
+
 .dashboard-wins-title { margin: 20px 0 8px; font-size: 1rem; color: var(--color-text-muted); }
 .wins-table { display: flex; flex-direction: column; gap: 8px; }
 .wins-row {

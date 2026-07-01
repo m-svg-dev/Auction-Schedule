@@ -40,7 +40,7 @@ export function generateWeekAssignments(guild, week) {
 
     for (let s = 1; s <= item.slotCount; s++) {
       const assigned = queue[s - 1] ?? null;
-      result.push({ week, itemName: item.itemName, slotNo: s, memberName: assigned, isCarryOver: false });
+      result.push({ week, itemName: item.itemName, slotNo: s, memberName: assigned, isCarryOver: false, confirmed: false });
       // 今週の当選を即座に累計へ反映（同一週内の多重取りを抑制するため）
       if (assigned) totalWins.set(assigned, (totalWins.get(assigned) || 0) + 1);
     }

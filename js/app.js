@@ -224,55 +224,114 @@ function renderAdminDashboard() {
   const guild = currentGuild;
   const thisWeek = getCurrentWeek();
   const nextWeek = addWeeks(thisWeek, 1);
-  const thisWeekAssignments = store.getAssignmentsForWeek(guild, thisWeek);
-  const nextWeekAssignments = store.getAssignmentsForWeek(guild, nextWeek);
-  const unavailableThisWeek = guild.unavailableWeeks.filter(u => u.week === thisWeek).length;
-
-  const cards = [
-    { label: '今週の担当', value: summarizeAssignments(thisWeekAssignments) || '未割り当て', cls: 'gold' },
-    { label: '次週の担当', value: summarizeAssignments(nextWeekAssignments) || '未割り当て', cls: 'purple' },
-    { label: '登録メンバー数', value: `${guild.members.length}人`, cls: '' },
-    { label: '登録アイテム数', value: `${guild.items.length}件`, cls: '' },
-    { label: 'イン不可人数(今週)', value: `${unavailableThisWeek}人`, cls: '' },
-  ];
-
-  $('dashboard-cards').innerHTML = cards.map(c => `
-    <div class="card ${c.cls}">
-      <div class="label">${c.label}</div>
-      <div class="value">${c.value}</div>
-    </div>
-  `).join('');
-
-  // 累計落札数テーブル
   const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
+
+  // 統計カード（小さく3つ横並び）
+  const unavailableThisWeek = guild.unavailableWeeks.filter(u => u.week === thisWeek).length;
+  $('dashboard-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-val">${guild.members.length}</div><div class="stat-label">メンバー</div></div>
+    <div class="stat-card"><div class="stat-val">${guild.items.length}</div><div class="stat-label">アイテム</div></div>
+    <div class="stat-card"><div class="stat-val">${unavailableThisWeek}</div><div class="stat-label">今週イン不可</div></div>
+  `;
+
+  // 今週のオークション（落札確認）
+  const thisWeekAssignments = store.getAssignmentsForWeek(guild, thisWeek);
+  if (thisWeekAssignments.length === 0) {
+    $('dashboard-auction-now').innerHTML = `
+      <div class="auction-section">
+        <div class="auction-header"><span class="auction-date">${formatSunday(thisWeek)} 今週のオークション</span></div>
+        <p class="empty-state">まだ割り当てがありません。「自動割り当て」から実行してください。</p>
+      </div>`;
+  } else {
+    const allConfirmed = thisWeekAssignments.every(a => a.confirmed);
+    const memberOptions = members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+    $('dashboard-auction-now').innerHTML = `
+      <div class="auction-section">
+        <div class="auction-header">
+          <span class="auction-date">${formatSunday(thisWeek)} 今週のオークション</span>
+          ${allConfirmed
+            ? '<span class="all-confirmed-badge">✓ 全件確認済み</span>'
+            : '<button id="confirm-all-btn" class="btn-primary btn-sm">全件確認</button>'}
+        </div>
+        <div class="confirm-list">
+          ${thisWeekAssignments.map((a, idx) => a.confirmed
+            ? `<div class="confirm-row confirmed">
+                <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+                <span class="confirm-winner">✓ ${a.memberName || '—'}</span>
+               </div>`
+            : `<div class="confirm-row">
+                <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+                <select class="confirm-select" data-idx="${idx}">
+                  <option value="">（未割当）</option>
+                  ${members.map(m => `<option value="${m.name}" ${m.name === a.memberName ? 'selected' : ''}>${m.name}</option>`).join('')}
+                </select>
+                <button class="btn-confirm" data-idx="${idx}">落札！</button>
+               </div>`
+          ).join('')}
+        </div>
+      </div>`;
+
+    document.querySelectorAll('.btn-confirm').forEach(btn => {
+      btn.addEventListener('click', () => withBusyAction(btn, async () => {
+        const idx = +btn.dataset.idx;
+        const sel = document.querySelector(`.confirm-select[data-idx="${idx}"]`);
+        const updated = thisWeekAssignments.map((a, i) =>
+          i === idx ? { ...a, memberName: sel?.value || a.memberName, confirmed: true } : a
+        );
+        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
+        await refreshGuild();
+        renderAdminDashboard();
+        showToast('落札を記録しました');
+      }));
+    });
+
+    $('confirm-all-btn')?.addEventListener('click', () =>
+      withBusyAction($('confirm-all-btn'), async () => {
+        const updated = thisWeekAssignments.map((a, idx) => {
+          const sel = document.querySelector(`.confirm-select[data-idx="${idx}"]`);
+          return { ...a, memberName: sel?.value || a.memberName, confirmed: true };
+        });
+        await store.confirmWeekAssignments(session.guildName, thisWeek, updated);
+        await refreshGuild();
+        renderAdminDashboard();
+        showToast('今週の落札を全件記録しました');
+      })
+    );
+  }
+
+  // 次週の予定
+  const nextWeekAssignments = store.getAssignmentsForWeek(guild, nextWeek);
+  $('dashboard-next').innerHTML = nextWeekAssignments.length === 0 ? '' : `
+    <div class="auction-section next-week">
+      <div class="auction-header"><span class="auction-date next-label">${formatSunday(nextWeek)} 次週の予定</span></div>
+      <div class="next-list">
+        ${nextWeekAssignments.map(a => `
+          <div class="next-row">
+            <span class="confirm-item">${a.itemName}${slotMark(a.slotNo)}</span>
+            <span class="next-winner">${a.memberName || '—'}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // 落札実績（確認済みのみカウント）
   const winCounts = Object.fromEntries(members.map(m => [m.name, 0]));
-  guild.assignments.filter(a => a.memberName).forEach(a => {
+  guild.assignments.filter(a => a.memberName && a.confirmed === true).forEach(a => {
     if (winCounts[a.memberName] !== undefined) winCounts[a.memberName]++;
   });
   const maxWins = Math.max(0, ...Object.values(winCounts));
-
   $('dashboard-wins').innerHTML = members.length === 0 ? '' : `
-    <h3 class="dashboard-wins-title">メンバー落札数</h3>
+    <h3 class="dashboard-wins-title">落札実績（確認済み）</h3>
     <div class="wins-table">
       ${members.map(m => {
         const w = winCounts[m.name] || 0;
         const pct = maxWins > 0 ? Math.round((w / maxWins) * 100) : 0;
-        return `
-          <div class="wins-row">
-            <span class="wins-name">${m.name}</span>
-            <div class="wins-bar-wrap"><div class="wins-bar" style="width:${pct}%"></div></div>
-            <span class="wins-count">${w}回</span>
-          </div>`;
+        return `<div class="wins-row">
+          <span class="wins-name">${m.name}</span>
+          <div class="wins-bar-wrap"><div class="wins-bar" style="width:${pct}%"></div></div>
+          <span class="wins-count">${w}回</span>
+        </div>`;
       }).join('')}
-    </div>
-  `;
-}
-
-function summarizeAssignments(list) {
-  return list
-    .filter(a => a.memberName)
-    .map(a => `${a.itemName}${slotMark(a.slotNo)}:${a.memberName}`)
-    .join(' / ');
+    </div>`;
 }
 
 function slotMark(n) {

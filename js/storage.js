@@ -248,6 +248,14 @@ export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
   });
 }
 
+// 週の落札確認（名前変更・confirmed=true の保存）
+export function confirmWeekAssignments(guildName, week, assignments) {
+  return updateGuild(guildName, guild => {
+    guild.assignments = guild.assignments.filter(a => a.week !== week);
+    guild.assignments.push(...assignments);
+  });
+}
+
 // カレンダー編集結果をまとめて1回のFirestore書き込みで保存する
 export function saveCalendarEdits(guildName, week, assignments, addUnavailNames, removeUnavailIds) {
   return updateGuild(guildName, guild => {
