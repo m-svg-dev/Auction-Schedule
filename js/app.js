@@ -156,6 +156,7 @@ const ADMIN_NAV = [
   { id: 'item-management', label: 'アイテム管理' },
   { id: 'wishlist-management', label: '希望アイテム管理' },
   { id: 'unavailable-management', label: 'イン不可管理' },
+  { id: 'request-management', label: '申請管理' },
   { id: 'auto-assign', label: '自動割り当て' },
   { id: 'calendar', label: 'カレンダー' },
   { id: 'member-search', label: 'メンバー検索' },
@@ -173,6 +174,7 @@ const RENDERERS = {
   'item-management': renderItemManagement,
   'wishlist-management': renderWishlistManagement,
   'unavailable-management': renderUnavailableManagement,
+  'request-management': renderRequestManagement,
   'auto-assign': renderAutoAssign,
   'calendar': renderCalendar,
   'member-search': renderMemberSearch,
@@ -685,6 +687,88 @@ $('form-add-wishlist-item').addEventListener('submit', e => {
   });
 });
 
+// --- 管理者：申請管理 ---
+
+function renderRequestManagement() {
+  const guild = currentGuild;
+  const requests = guild.unavailableWeeks
+    .filter(u => u.memberRequest)
+    .sort((a, b) => b.week.localeCompare(a.week));
+
+  const pending = requests.filter(u => u.status === 'pending');
+  const history = requests.filter(u => u.status !== 'pending');
+
+  let html = '';
+
+  // 未処理の申請
+  html += `<div class="req-section-title">未処理の申請 (${pending.length}件)</div>`;
+  if (pending.length === 0) {
+    html += '<p class="empty-state">未処理の申請はありません</p>';
+  } else {
+    html += pending.map(u => {
+      const assignment = guild.assignments.filter(a => a.week === u.week && a.memberName === u.memberName);
+      const assignmentInfo = assignment.length > 0
+        ? `<div class="req-assignment-warn">⚠ 担当あり: ${assignment.map(a => `${a.itemName}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
+        : '<div class="req-assignment-ok">担当なし（割当取消は不要）</div>';
+      return `
+        <div class="req-card pending-card">
+          <div class="req-header">
+            <span class="req-member">${u.memberName}</span>
+            <span class="req-date">${formatSundayShort(u.week)}</span>
+            <span class="req-status-badge pending">申請中</span>
+          </div>
+          ${u.reason ? `<div class="req-reason">理由: ${u.reason}</div>` : ''}
+          ${assignmentInfo}
+          <div class="req-actions">
+            <button class="btn-approve" data-id="${u.id}" data-member="${u.memberName}" data-week="${u.week}" data-has-assign="${assignment.length > 0}">承認${assignment.length > 0 ? '・割当取消' : ''}</button>
+            <button class="btn-reject" data-id="${u.id}">拒否</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // 履歴
+  html += `<div class="req-section-title" style="margin-top:20px">承認・拒否の履歴 (${history.length}件)</div>`;
+  if (history.length === 0) {
+    html += '<p class="empty-state">履歴はありません</p>';
+  } else {
+    html += history.map(u => `
+      <div class="req-card history-card">
+        <div class="req-header">
+          <span class="req-member">${u.memberName}</span>
+          <span class="req-date">${formatSundayShort(u.week)}</span>
+          <span class="req-status-badge ${u.status}">${u.status === 'approved' ? '✓ 承認済み' : '✗ 拒否済み'}</span>
+        </div>
+        ${u.reason ? `<div class="req-reason">理由: ${u.reason}</div>` : ''}
+      </div>`).join('');
+  }
+
+  $('request-list').innerHTML = html;
+
+  // 承認ボタン
+  $('request-list').querySelectorAll('.btn-approve').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      await store.approveRequest(session.guildName, btn.dataset.id);
+      if (btn.dataset.hasAssign === 'true') {
+        await store.cancelMemberAssignment(session.guildName, btn.dataset.member, btn.dataset.week);
+      }
+      await refreshGuild();
+      renderRequestManagement();
+      showToast('申請を承認しました');
+    }));
+  });
+
+  // 拒否ボタン
+  $('request-list').querySelectorAll('.btn-reject').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      await store.rejectRequest(session.guildName, btn.dataset.id);
+      await refreshGuild();
+      renderRequestManagement();
+      showToast('申請を拒否しました');
+    }));
+  });
+}
+
 // --- 管理者：イン不可管理 ---
 
 function renderUnavailableManagement() {
@@ -1030,14 +1114,18 @@ function renderMemberUnavailableRequest() {
     .filter(u => u.memberName === session.memberName)
     .sort((a, b) => a.week.localeCompare(b.week));
   $('member-unavailable-table-body').innerHTML = mine.length
-    ? mine.map(u => `
-        <tr>
+    ? mine.map(u => {
+        const badge = u.status === 'approved' ? '<span class="req-status-badge approved">承認</span>'
+          : u.status === 'rejected' ? '<span class="req-status-badge rejected">拒否</span>'
+          : '<span class="req-status-badge pending">申請中</span>';
+        return `<tr>
           <td class="date-cell">${formatSundayShort(u.week)}</td>
           <td>${u.reason || '-'}</td>
-          <td><button class="btn-danger" data-del-my-unavail="${u.id}">取消</button></td>
-        </tr>
-      `).join('')
-    : '<tr><td colspan="3">申請はありません</td></tr>';
+          <td>${badge}</td>
+          <td>${u.status === 'pending' ? `<button class="btn-danger" data-del-my-unavail="${u.id}">取消</button>` : ''}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="4">申請はありません</td></tr>';
   $('member-unavailable-table-body').querySelectorAll('[data-del-my-unavail]').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.removeUnavailable(session.guildName, btn.dataset.delMyUnavail);
@@ -1069,7 +1157,7 @@ $('form-member-unavailable').addEventListener('submit', e => {
     const week = $('member-unavailable-week').value;
     const reason = $('member-unavailable-reason').value.trim();
     if (!week) return;
-    await store.addUnavailable(session.guildName, session.memberName, week, reason);
+    await store.addUnavailableRequest(session.guildName, session.memberName, week, reason);
     $('member-unavailable-reason').value = '';
     await refreshGuild();
     renderMemberUnavailableRequest();

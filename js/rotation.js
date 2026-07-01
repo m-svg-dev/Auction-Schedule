@@ -11,8 +11,11 @@
 export function generateWeekAssignments(guild, week) {
   const items = guild.items;
   const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
+  // pending(申請中)・rejected(拒否済み)はスキップしない。approved(承認済み)または旧データのみスキップ。
   const unavailableSet = new Set(
-    guild.unavailableWeeks.filter(u => u.week === week).map(u => u.memberName)
+    guild.unavailableWeeks
+      .filter(u => u.week === week && (u.status === 'approved' || !u.status))
+      .map(u => u.memberName)
   );
 
   // 今週より前の全アイテム合計落札回数を集計（全体公平性のため）

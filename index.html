@@ -116,6 +116,13 @@
       <ul id="wishlist-list" class="sortable-list"></ul>
     </section>
 
+    <!-- 管理者：申請管理 -->
+    <section id="view-request-management" class="view hidden">
+      <h2>申請管理</h2>
+      <p class="hint">メンバーからのイン不可申請一覧です。担当がある場合は「承認・割当取消」で担当を外せます。</p>
+      <div id="request-list"></div>
+    </section>
+
     <!-- 管理者：イン不可管理 -->
     <section id="view-unavailable-management" class="view hidden">
       <h2>イン不可管理</h2>
@@ -214,7 +221,7 @@
         <button type="submit" class="btn-primary">申請する</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>対象日</th><th>理由</th><th></th></tr></thead>
+        <thead><tr><th>対象日</th><th>理由</th><th>状態</th><th></th></tr></thead>
         <tbody id="member-unavailable-table-body"></tbody>
       </table>
     </section>

@@ -170,9 +170,31 @@ export function deleteItem(guildName, itemId) {
 
 // --- unavailable weeks ---
 
+// 管理者が直接登録（即時承認）
 export function addUnavailable(guildName, memberName, week, reason) {
   return updateGuild(guildName, guild => {
-    guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: reason || '' });
+    guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: reason || '', status: 'approved' });
+  });
+}
+
+// メンバーが申請（管理者の承認待ち）
+export function addUnavailableRequest(guildName, memberName, week, reason) {
+  return updateGuild(guildName, guild => {
+    guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: reason || '', status: 'pending', memberRequest: true });
+  });
+}
+
+export function approveRequest(guildName, unavailId) {
+  return updateGuild(guildName, guild => {
+    const u = guild.unavailableWeeks.find(w => w.id === unavailId);
+    if (u) { u.status = 'approved'; u.reviewedAt = new Date().toISOString(); }
+  });
+}
+
+export function rejectRequest(guildName, unavailId) {
+  return updateGuild(guildName, guild => {
+    const u = guild.unavailableWeeks.find(w => w.id === unavailId);
+    if (u) { u.status = 'rejected'; u.reviewedAt = new Date().toISOString(); }
   });
 }
 
@@ -245,6 +267,15 @@ export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
     guild.assignments = guild.assignments.filter(a => !assignedWeeks.has(a.week));
     guild.assignments.push(...allAssignments);
     guild.itemRotationPointers = finalPointers;
+  });
+}
+
+// イン不可申請承認: その週のその人の担当をキャンセル（memberName を null に）
+export function cancelMemberAssignment(guildName, memberName, week) {
+  return updateGuild(guildName, guild => {
+    guild.assignments
+      .filter(a => a.week === week && a.memberName === memberName)
+      .forEach(a => { a.memberName = null; a.confirmed = false; });
   });
 }
 

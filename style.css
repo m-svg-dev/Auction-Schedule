@@ -503,6 +503,60 @@ button:disabled {
   font-weight: bold;
 }
 
+/* --- 申請管理 --- */
+.req-section-title { font-weight: bold; font-size: 0.9rem; color: var(--color-text-muted); margin-bottom: 10px; }
+.req-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.pending-card { border-left: 4px solid #f57c00; }
+.history-card { border-left: 4px solid var(--color-border); opacity: 0.85; }
+.req-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.req-member { font-weight: bold; font-size: 0.95rem; }
+.req-date { color: var(--color-text-muted); font-size: 0.85rem; }
+.req-reason { font-size: 0.82rem; color: var(--color-text-muted); margin-bottom: 6px; }
+.req-assignment-warn { font-size: 0.82rem; color: #f57c00; margin-bottom: 8px; }
+.req-assignment-ok { font-size: 0.82rem; color: #aaa; margin-bottom: 8px; }
+.req-actions { display: flex; gap: 8px; }
+
+.req-status-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.req-status-badge.pending { background: #fff3e0; color: #f57c00; }
+.req-status-badge.approved { background: #e8f5e9; color: #2e7d32; }
+.req-status-badge.rejected { background: #fce4ec; color: #c62828; }
+
+.btn-approve {
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btn-approve:hover { background: #1b5e20; }
+.btn-reject {
+  background: #fff;
+  border: 1px solid #c62828;
+  color: #c62828;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.btn-reject:hover { background: #c62828; color: #fff; }
+
 .unavail-conflict {
   background: #fff8e1;
   border: 1px solid #f9a825;
