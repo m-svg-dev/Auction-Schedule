@@ -165,7 +165,7 @@ const ADMIN_NAV = [
 const MEMBER_NAV = [
   { id: 'member-home', label: '自分の予定' },
   { id: 'calendar', label: 'カレンダー' },
-  { id: 'member-unavailable-request', label: 'イン不可申請' },
+  { id: 'member-unavailable-request', label: '欠席連絡' },
 ];
 
 const RENDERERS = {
@@ -1142,7 +1142,7 @@ function checkUnavailConflict(week) {
     a => a.week === week && a.memberName === session.memberName
   );
   if (hasAssignment) {
-    warning.textContent = `⚠ ${formatSundayShort(week)} はすでに担当に割り当てられています。申請しても既存の割り当ては自動では変わりません。管理者にカレンダーから変更してもらってください。`;
+    warning.textContent = `⚠ ${formatSundayShort(week)} はすでに担当に割り当てられています。連絡後、管理者が「申請管理」で承認すると担当から外されます。`;
     warning.classList.remove('hidden');
   } else {
     warning.classList.add('hidden');
