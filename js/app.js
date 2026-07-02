@@ -941,14 +941,13 @@ function runMultipleWeeksInMemory(guild, startWeek, count) {
 
 function renderAutoAssign() {
   const thisWeek = getCurrentWeek();
-  const guild = currentGuild;
 
-  // 一括実行: 現在の設定済み最終週を表示
+  // 一括実行: 設定済み状況と開始週セレクト
   updateBulkAssignedStatus();
-
-  // 一括実行: 週数変更時のプレビュー更新
-  const weekCount = parseInt($('bulk-weeks-count').value, 10) || 4;
-  updateBulkRangeLabel(weekCount);
+  const nextStart = getNextBulkStartWeek();
+  const currentStart = $('bulk-start-week').value || nextStart;
+  populateSundaySelect('bulk-start-week', currentStart, 4, 16);
+  updateBulkRangeLabel(parseInt($('bulk-weeks-count').value, 10) || 4);
 
   // 特定の週: 日曜日プルダウンを設定
   const currentVal = $('assign-week').value || thisWeek;
@@ -980,12 +979,15 @@ function getNextBulkStartWeek() {
 }
 
 function updateBulkRangeLabel(weekCount) {
-  const startWeek = getNextBulkStartWeek();
+  const startWeek = $('bulk-start-week').value || getNextBulkStartWeek();
   const endWeek = addWeeks(startWeek, weekCount - 1);
-  const isExtending = startWeek !== getCurrentWeek();
-  $('bulk-assign-range-label').textContent = isExtending
-    ? `${formatSunday(startWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分・続きから追加）`
-    : `${formatSunday(startWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+  const nextDefault = getNextBulkStartWeek();
+  const isOverwrite = startWeek < nextDefault && currentGuild.assignments.some(a => a.week === startWeek);
+  $('bulk-assign-range-label').textContent =
+    `${formatSunday(startWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+  $('bulk-start-warn').innerHTML = isOverwrite
+    ? `<div class="assigned-status assigned-warn">⚠ 設定済みの週が含まれます（上書きされます）</div>`
+    : '';
 }
 
 function updateSingleAssignedStatus(week) {
@@ -997,6 +999,9 @@ function updateSingleAssignedStatus(week) {
     : `<div class="assigned-status assigned-none">${formatSundayShort(week)} は未設定です</div>`;
 }
 
+$('bulk-start-week').addEventListener('change', () => {
+  updateBulkRangeLabel(parseInt($('bulk-weeks-count').value, 10) || 1);
+});
 $('bulk-weeks-count').addEventListener('input', () => {
   updateBulkRangeLabel(parseInt($('bulk-weeks-count').value, 10) || 1);
 });
@@ -1015,7 +1020,7 @@ $('form-bulk-assign').addEventListener('submit', e => {
       showToast('メンバーとアイテムを登録してから実行してください');
       return;
     }
-    const startWeek = getNextBulkStartWeek();
+    const startWeek = $('bulk-start-week').value || getNextBulkStartWeek();
     const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, startWeek, weekCount);
     await store.applyBulkAssignments(session.guildName, allAssignments, finalPointers);
     await refreshGuild();

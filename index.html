@@ -149,9 +149,11 @@
         <p class="hint">今週の日曜日から指定した週数分をまとめて割り当てます。メンバー人数分でちょうど1周する週数を入れると均等になります。</p>
         <div id="bulk-assigned-status"></div>
         <p id="bulk-assign-range-label" class="assign-range-label"></p>
+        <div id="bulk-start-warn"></div>
         <form id="form-bulk-assign" class="inline-form">
-          <label>今週から <input type="number" id="bulk-weeks-count" min="1" max="52" value="4" required> 週分</label>
-          <button type="submit" class="btn-primary">一括実行</button>
+          <label>開始週 <select id="bulk-start-week"></select></label>
+          <label><input type="number" id="bulk-weeks-count" min="1" max="52" value="4" required> 週分</label>
+          <button type="submit" class="btn-primary">実行</button>
         </form>
         <div id="bulk-assign-summary"></div>
       </div>
