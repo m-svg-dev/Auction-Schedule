@@ -68,6 +68,7 @@ async function withBusyAction(btn, fn) {
     await fn();
   } catch (err) {
     showToast(err.message || '保存に失敗しました。通信状況を確認してもう一度お試しください');
+  } finally {
     if (btn) btn.disabled = false;
   }
 }
