@@ -1108,7 +1108,7 @@ function initCalendarState(week) {
   const assignments = store.getAssignmentsForWeek(guild, week).map(a => ({ ...a }));
   // manualOverrides: ユーザーが手動で変更したスロットを記録する Map<idx, memberName|null>
   // トグルで再計算しても手動変更が消えないようにここで保持する
-  calendarState = { week, localAbsent: absentThisWeek, assignments, dirty: false, manualOverrides: new Map() };
+  calendarState = { week, localAbsent: absentThisWeek, originalAbsent: new Set(absentThisWeek), assignments, dirty: false, manualOverrides: new Map() };
 }
 
 function recalcCalendar() {
@@ -1162,7 +1162,10 @@ function renderCalendar() {
         if (calendarState.localAbsent.has(name)) calendarState.localAbsent.delete(name);
         else calendarState.localAbsent.add(name);
         recalcCalendar();
-        calendarState.dirty = true;
+        const orig = calendarState.originalAbsent;
+        const sameAsOriginal = calendarState.localAbsent.size === orig.size &&
+          [...calendarState.localAbsent].every(n => orig.has(n));
+        calendarState.dirty = !sameAsOriginal || calendarState.manualOverrides.size > 0;
         renderCalendar();
       });
     });
