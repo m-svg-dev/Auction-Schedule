@@ -1072,7 +1072,9 @@ function initCalendarState(week) {
     guild.unavailableWeeks.filter(u => u.week === week).map(u => u.memberName)
   );
   const assignments = store.getAssignmentsForWeek(guild, week).map(a => ({ ...a }));
-  calendarState = { week, localAbsent: absentThisWeek, assignments, dirty: false };
+  // manualOverrides: ユーザーが手動で変更したスロットを記録する Map<idx, memberName|null>
+  // トグルで再計算しても手動変更が消えないようにここで保持する
+  calendarState = { week, localAbsent: absentThisWeek, assignments, dirty: false, manualOverrides: new Map() };
 }
 
 function recalcCalendar() {
@@ -1087,6 +1089,13 @@ function recalcCalendar() {
   };
   const result = generateWeekAssignments(modifiedGuild, calendarState.week);
   calendarState.assignments = result.assignments;
+
+  // 手動変更を再適用する（ただし不参加にしたメンバーへの割り当ては除外）
+  calendarState.manualOverrides.forEach((memberName, idx) => {
+    if (calendarState.assignments[idx] && !calendarState.localAbsent.has(memberName)) {
+      calendarState.assignments[idx].memberName = memberName || null;
+    }
+  });
 }
 
 function renderCalendar() {
@@ -1148,7 +1157,10 @@ function renderCalendar() {
   if (session.role === 'admin') {
     $('calendar-table-body').querySelectorAll('.calendar-member-select').forEach(sel => {
       sel.addEventListener('change', () => {
-        calendarState.assignments[+sel.dataset.idx].memberName = sel.value || null;
+        const idx = +sel.dataset.idx;
+        const memberName = sel.value || null;
+        calendarState.assignments[idx].memberName = memberName;
+        calendarState.manualOverrides.set(idx, memberName); // 手動変更を記録してトグル再計算でも保持
         calendarState.dirty = true;
         updateCalendarSaveBar();
       });
