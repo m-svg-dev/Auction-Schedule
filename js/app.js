@@ -1022,13 +1022,20 @@ $('form-bulk-assign').addEventListener('submit', e => {
       return;
     }
     const startWeek = $('bulk-start-week').value || getNextBulkStartWeek();
+    const endWeek = addWeeks(startWeek, weekCount - 1);
+    const futureWeeks = [...new Set(
+      guild.assignments.filter(a => a.week > endWeek).map(a => a.week)
+    )].sort();
+    if (futureWeeks.length > 0) {
+      const msg = `実行すると、${endWeek} より後の ${futureWeeks.length} 週分の割り当て（${futureWeeks[0]} 〜 ${futureWeeks[futureWeeks.length - 1]}）がクリアされます。続けますか？`;
+      if (!confirm(msg)) return;
+    }
     const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, startWeek, weekCount);
     await store.applyBulkAssignments(session.guildName, allAssignments, finalPointers);
     await refreshGuild();
     updateBulkAssignedStatus();
     updateBulkRangeLabel(weekCount);
 
-    const endWeek = addWeeks(startWeek, weekCount - 1);
     showToast(`${formatSunday(startWeek)}〜${formatSunday(endWeek)} の${weekCount}週分を実行しました`);
 
     const weekSummary = [];

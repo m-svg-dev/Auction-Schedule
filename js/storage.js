@@ -274,8 +274,8 @@ export function applyWeekAssignments(guildName, week, result) {
 // 複数週分の割り当てを1回のFirestore書き込みでまとめて保存する
 export function applyBulkAssignments(guildName, allAssignments, finalPointers) {
   return updateGuild(guildName, guild => {
-    const assignedWeeks = new Set(allAssignments.map(a => a.week));
-    guild.assignments = guild.assignments.filter(a => !assignedWeeks.has(a.week));
+    const startWeek = [...allAssignments.map(a => a.week)].sort()[0];
+    guild.assignments = guild.assignments.filter(a => a.week < startWeek);
     guild.assignments.push(...allAssignments);
     guild.itemRotationPointers = finalPointers;
   });
