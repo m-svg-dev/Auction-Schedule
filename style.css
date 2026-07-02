@@ -796,11 +796,13 @@ button:disabled {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   background: var(--color-sidebar);
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom, 0); /* iPhone ホームバー対応 */
 }
 .bottom-nav-tab {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -816,9 +818,24 @@ button:disabled {
   transition: color 0.15s;
   min-height: 56px;
 }
-.bottom-nav-tab .tab-icon { font-size: 1.3rem; line-height: 1; }
+.bottom-nav-tab .tab-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+  /* 非選択タブは絵文字もトーンダウンして選択状態を際立たせる */
+  filter: grayscale(1) opacity(0.55);
+  transition: filter 0.15s;
+}
 .bottom-nav-tab.active { color: var(--color-gold); }
-.bottom-nav-tab:active { color: #fff; }
+.bottom-nav-tab.active .tab-icon { filter: none; }
+.bottom-nav-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 25%; right: 25%;
+  height: 3px;
+  background: var(--color-gold);
+  border-radius: 0 0 3px 3px;
+}
+.bottom-nav-tab:active { color: #fff; background: rgba(255,255,255,0.06); }
 
 /* --- 設定シート --- */
 .settings-sheet {
