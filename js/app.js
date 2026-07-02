@@ -1042,6 +1042,13 @@ $('form-auto-assign').addEventListener('submit', e => {
       showToast('メンバーとアイテムを登録してから実行してください');
       return;
     }
+    const futureWeeks = [...new Set(
+      guild.assignments.filter(a => a.week > week).map(a => a.week)
+    )].sort();
+    if (futureWeeks.length > 0) {
+      const msg = `この週を再実行すると、以降の ${futureWeeks.length} 週分の割り当て（${futureWeeks[0]} 〜 ${futureWeeks[futureWeeks.length - 1]}）がクリアされます。続けますか？`;
+      if (!confirm(msg)) return;
+    }
     const result = generateWeekAssignments(guild, week);
     await store.applyWeekAssignments(session.guildName, week, result);
     await refreshGuild();

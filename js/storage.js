@@ -265,7 +265,7 @@ export function getAssignmentsForWeek(guild, week) {
 
 export function applyWeekAssignments(guildName, week, result) {
   return updateGuild(guildName, guild => {
-    guild.assignments = guild.assignments.filter(a => a.week !== week);
+    guild.assignments = guild.assignments.filter(a => a.week < week);
     guild.assignments.push(...result.assignments);
     guild.itemRotationPointers = result.updatedPointers;
   });
