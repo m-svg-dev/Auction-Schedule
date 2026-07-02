@@ -963,16 +963,29 @@ function updateBulkAssignedStatus() {
   const guild = currentGuild;
   const assignedWeeks = [...new Set(guild.assignments.map(a => a.week))].sort();
   const latestWeek = assignedWeeks.length > 0 ? assignedWeeks[assignedWeeks.length - 1] : null;
+  const nextStart = getNextBulkStartWeek();
+  const isExtending = latestWeek && nextStart !== getCurrentWeek();
   $('bulk-assigned-status').innerHTML = latestWeek
-    ? `<div class="assigned-status assigned-ok">✓ ${formatSunday(latestWeek)} まで設定済み</div>`
+    ? `<div class="assigned-status assigned-ok">✓ ${formatSunday(latestWeek)} まで設定済み${isExtending ? ` → 次は ${formatSundayShort(nextStart)} から` : ''}</div>`
     : `<div class="assigned-status assigned-none">まだ割り当てがありません</div>`;
 }
 
-function updateBulkRangeLabel(weekCount) {
+// 設定済みの最終週の翌週（なければ今週）を一括実行の開始週として返す
+function getNextBulkStartWeek() {
+  const assignedWeeks = [...new Set(currentGuild.assignments.map(a => a.week))].sort();
+  if (assignedWeeks.length === 0) return getCurrentWeek();
+  const lastAssigned = assignedWeeks[assignedWeeks.length - 1];
   const thisWeek = getCurrentWeek();
-  const endWeek = addWeeks(thisWeek, weekCount - 1);
-  $('bulk-assign-range-label').textContent =
-    `${formatSunday(thisWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
+  return lastAssigned >= thisWeek ? addWeeks(lastAssigned, 1) : thisWeek;
+}
+
+function updateBulkRangeLabel(weekCount) {
+  const startWeek = getNextBulkStartWeek();
+  const endWeek = addWeeks(startWeek, weekCount - 1);
+  const isExtending = startWeek !== getCurrentWeek();
+  $('bulk-assign-range-label').textContent = isExtending
+    ? `${formatSunday(startWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分・続きから追加）`
+    : `${formatSunday(startWeek)} 〜 ${formatSunday(endWeek)}（${weekCount}週分）`;
 }
 
 function updateSingleAssignedStatus(week) {
@@ -1002,18 +1015,19 @@ $('form-bulk-assign').addEventListener('submit', e => {
       showToast('メンバーとアイテムを登録してから実行してください');
       return;
     }
-    const thisWeek = getCurrentWeek();
-    const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, thisWeek, weekCount);
+    const startWeek = getNextBulkStartWeek();
+    const { allAssignments, finalPointers } = runMultipleWeeksInMemory(guild, startWeek, weekCount);
     await store.applyBulkAssignments(session.guildName, allAssignments, finalPointers);
     await refreshGuild();
     updateBulkAssignedStatus();
+    updateBulkRangeLabel(weekCount);
 
-    const endWeek = addWeeks(thisWeek, weekCount - 1);
-    showToast(`${formatSunday(thisWeek)}〜${formatSunday(endWeek)} の${weekCount}週分を実行しました`);
+    const endWeek = addWeeks(startWeek, weekCount - 1);
+    showToast(`${formatSunday(startWeek)}〜${formatSunday(endWeek)} の${weekCount}週分を実行しました`);
 
     const weekSummary = [];
     for (let i = 0; i < weekCount; i++) {
-      const week = addWeeks(thisWeek, i);
+      const week = addWeeks(startWeek, i);
       const rows = allAssignments.filter(a => a.week === week);
       weekSummary.push(`
         <div class="bulk-week-card">
