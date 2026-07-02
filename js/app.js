@@ -1202,13 +1202,15 @@ function renderCalendar() {
         updateCalendarSaveBar();
       });
     });
-    // 凡例（希望者がいる場合のみ表示）
-    const hasWishers = calendarState.assignments.some(a =>
-      currentGuild.wishlists.some(w => w.itemName === a.itemName)
-    );
-    const legendEl = document.querySelector('#view-calendar .wish-legend');
-    if (!legendEl && hasWishers) {
-      $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND);
+    // 凡例（管理者かつ希望者がいる場合のみ表示）
+    if (session.role === 'admin') {
+      const hasWishers = calendarState.assignments.some(a =>
+        currentGuild.wishlists.some(w => w.itemName === a.itemName)
+      );
+      const legendEl = document.querySelector('#view-calendar .wish-legend');
+      if (!legendEl && hasWishers) {
+        $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND);
+      }
     }
   }
 
