@@ -177,12 +177,34 @@ export function updateItem(guildName, itemId, fields) {
     const item = guild.items.find(i => i.id === itemId);
     if (!item) return;
     const oldName = item.itemName;
+    const oldAuctionName = item.auctionName || null;
     Object.assign(item, fields);
-    // アイテム名が変わった場合、wishlists / assignments の参照も更新する
+    const newAuctionName = item.auctionName || null;
+
+    // assignment が対象アイテムのものかを判定するヘルパー（同名別オークションに波及しない）
+    function isTargetAssignment(a, checkItemName, checkAuctionName) {
+      if (a.itemName !== checkItemName) return false;
+      if (a.auctionName !== undefined) return (a.auctionName || null) === checkAuctionName;
+      // 旧形式（auctionName なし）: 自分以外に同名アイテムがない場合のみ対象とする
+      return guild.items.filter(it => it.id !== itemId && it.itemName === checkItemName).length === 0;
+    }
+
+    // アイテム名変更: wishlists と assignments を更新（#3 修正: auctionName で絞り込む）
     if (fields.itemName && fields.itemName !== oldName) {
-      // itemId のない旧データのみ itemName を更新（新データは getMemberWishlist で解決）
       guild.wishlists.forEach(w => { if (!w.itemId && w.itemName === oldName) w.itemName = fields.itemName; });
-      guild.assignments.forEach(a => { if (a.itemName === oldName) a.itemName = fields.itemName; });
+      guild.assignments.forEach(a => {
+        if (!isTargetAssignment(a, oldName, oldAuctionName)) return;
+        a.itemName = fields.itemName;
+      });
+    }
+
+    // auctionName 変更: assignments の auctionName も更新（#4 修正）
+    if ('auctionName' in fields && newAuctionName !== oldAuctionName) {
+      const currentName = fields.itemName || oldName;
+      guild.assignments.forEach(a => {
+        if (!isTargetAssignment(a, currentName, oldAuctionName)) return;
+        a.auctionName = newAuctionName;
+      });
     }
   });
 }

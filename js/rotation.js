@@ -35,7 +35,12 @@ export function generateWeekAssignments(guild, week) {
 
     const queue = guild.wishlists
       // 新データは itemId で、旧データは itemName でマッチ
-      .filter(w => w.itemId ? w.itemId === item.id : w.itemName === item.itemName)
+      // 旧データで同名アイテムが複数ある場合は曖昧なため除外（同週多重割り当て防止）
+      .filter(w => {
+        if (w.itemId) return w.itemId === item.id;
+        const sameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
+        return sameNameCount === 1 && w.itemName === item.itemName;
+      })
       .sort((a, b) => {
         const iwA = itemWins.get(a.memberName) || 0;
         const iwB = itemWins.get(b.memberName) || 0;
