@@ -214,10 +214,14 @@ export function deleteItem(guildName, itemId) {
     const item = guild.items.find(i => i.id === itemId);
     guild.items = guild.items.filter(i => i.id !== itemId);
     if (item) {
-      // 新データは itemId で、旧データは itemName で削除
-      guild.wishlists = guild.wishlists.filter(w =>
-        w.itemId ? w.itemId !== itemId : w.itemName !== item.itemName
-      );
+      // guild.items からは既に削除済みなので、残る同名アイテム数で曖昧さを判定できる
+      const otherSameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
+      guild.wishlists = guild.wishlists.filter(w => {
+        if (w.itemId) return w.itemId !== itemId;
+        // 旧形式: 同名アイテムが他に存在する場合は削除しない（別オークション分を誤削除しない）
+        if (otherSameNameCount > 0) return true;
+        return w.itemName !== item.itemName;
+      });
     }
   });
 }
@@ -296,9 +300,12 @@ export function addWishlistItem(guildName, memberName, itemId) {
     const item = guild.items.find(it => it.id === itemId);
     if (!item) return;
     // 重複チェック: 新データは itemId で、旧データは itemName で判定
+    // 旧データの itemName マッチは、同名アイテムが一意な場合のみ重複とみなす
+    // （同名別オークションアイテムの追加を誤って拒否しない）
+    const sameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
     const dup = guild.wishlists.some(w =>
       w.memberName === memberName &&
-      (w.itemId ? w.itemId === itemId : w.itemName === item.itemName)
+      (w.itemId ? w.itemId === itemId : sameNameCount === 1 && w.itemName === item.itemName)
     );
     if (dup) return;
     const maxRank = guild.wishlists
