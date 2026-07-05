@@ -88,17 +88,32 @@
       <ul id="member-list" class="sortable-list"></ul>
     </section>
 
+    <!-- 管理者：開催オークション管理 -->
+    <section id="view-auction-management" class="view hidden">
+      <h2>開催オークション管理</h2>
+      <p class="hint">オークションの種類を登録します。アイテム追加時に分類として選べます（例：武器、防具など）。</p>
+      <form id="form-add-auction" class="inline-form">
+        <input type="text" id="new-auction-name" placeholder="オークション名" required>
+        <button type="submit" class="btn-primary">追加</button>
+      </form>
+      <table class="data-table">
+        <thead><tr><th>オークション名</th><th></th></tr></thead>
+        <tbody id="auction-table-body"></tbody>
+      </table>
+    </section>
+
     <!-- 管理者：アイテム管理 -->
     <section id="view-item-management" class="view hidden">
       <h2>オークションアイテム管理</h2>
       <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。</p>
       <form id="form-add-item" class="inline-form">
+        <label>開催オークション <select id="new-item-auction"></select></label>
         <input type="text" id="new-item-name" placeholder="アイテム名" required>
         <label>枠数 <input type="number" id="new-item-slots" min="1" value="1" required></label>
         <button type="submit" class="btn-primary">追加</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>アイテム名</th><th>枠数</th><th>希望者</th><th></th></tr></thead>
+        <thead><tr><th>開催オークション</th><th>アイテム名</th><th>枠数</th><th>希望者</th><th></th></tr></thead>
         <tbody id="item-table-body"></tbody>
       </table>
     </section>
@@ -156,6 +171,13 @@
           <button type="submit" class="btn-primary">実行</button>
         </form>
         <div id="bulk-assign-summary"></div>
+      </div>
+
+      <div class="assign-block">
+        <h3>新アイテムの差分追加</h3>
+        <p class="hint">割り当て済みの週に、まだ含まれていないアイテムを「未割当」の状態で追加します。欠席状況や既存の割り当ては変わりません。カレンダーから手動で担当を割り振れます。</p>
+        <div id="diff-assign-status"></div>
+        <button id="diff-assign-btn" class="btn-primary hidden">未割当で追加</button>
       </div>
 
       <div class="assign-block">

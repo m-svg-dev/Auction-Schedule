@@ -34,7 +34,8 @@ export function generateWeekAssignments(guild, week) {
       .forEach(a => itemWins.set(a.memberName, (itemWins.get(a.memberName) || 0) + 1));
 
     const queue = guild.wishlists
-      .filter(w => w.itemName === item.itemName)
+      // 新データは itemId で、旧データは itemName でマッチ
+      .filter(w => w.itemId ? w.itemId === item.id : w.itemName === item.itemName)
       .sort((a, b) => {
         const iwA = itemWins.get(a.memberName) || 0;
         const iwB = itemWins.get(b.memberName) || 0;
@@ -50,7 +51,7 @@ export function generateWeekAssignments(guild, week) {
 
     for (let s = 1; s <= item.slotCount; s++) {
       const assigned = queue[s - 1] ?? null;
-      result.push({ week, itemName: item.itemName, slotNo: s, memberName: assigned, isCarryOver: false, confirmed: false });
+      result.push({ week, itemName: item.itemName, auctionName: item.auctionName || null, slotNo: s, memberName: assigned, isCarryOver: false, confirmed: false });
       // 今週分も即座に合計に加算（同一週内の別アイテムでの多重取りを抑制）
       if (assigned) totalWins.set(assigned, (totalWins.get(assigned) || 0) + 1);
     }

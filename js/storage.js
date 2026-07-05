@@ -58,12 +58,13 @@ function createEmptyGuild(guildName, passwordHash) {
     wishlists: [],
     itemRotationPointers: {},
     assignments: [],
+    auctionEvents: [],
   };
 }
 
 // 旧データ（wishlists 未保存のギルド等）を読んだ際にフィールド欠落で落ちないようにする
 function normalizeGuild(data) {
-  return { wishlists: [], itemRotationPointers: {}, ...data };
+  return { wishlists: [], itemRotationPointers: {}, auctionEvents: [], ...data };
 }
 
 export async function registerGuild(guildName, password) {
@@ -143,18 +144,46 @@ export function reorderMembers(guildName, orderedIds) {
   });
 }
 
+// --- auction events ---
+
+export function addAuctionEvent(guildName, name) {
+  return updateGuild(guildName, guild => {
+    guild.auctionEvents.push({ id: newId(), name });
+  });
+}
+
+export function deleteAuctionEvent(guildName, auctionEventId) {
+  return updateGuild(guildName, guild => {
+    const event = guild.auctionEvents.find(ae => ae.id === auctionEventId);
+    guild.auctionEvents = guild.auctionEvents.filter(ae => ae.id !== auctionEventId);
+    if (event) {
+      // 削除されたオークション名を items / assignments から null に戻す
+      guild.items.forEach(item => { if (item.auctionName === event.name) item.auctionName = null; });
+      guild.assignments.forEach(a => { if (a.auctionName === event.name) a.auctionName = null; });
+    }
+  });
+}
+
 // --- items ---
 
-export function addItem(guildName, itemName, slotCount) {
+export function addItem(guildName, itemName, slotCount, auctionName) {
   return updateGuild(guildName, guild => {
-    guild.items.push({ id: newId(), itemName, slotCount });
+    guild.items.push({ id: newId(), itemName, slotCount, auctionName: auctionName || null });
   });
 }
 
 export function updateItem(guildName, itemId, fields) {
   return updateGuild(guildName, guild => {
     const item = guild.items.find(i => i.id === itemId);
-    if (item) Object.assign(item, fields);
+    if (!item) return;
+    const oldName = item.itemName;
+    Object.assign(item, fields);
+    // アイテム名が変わった場合、wishlists / assignments の参照も更新する
+    if (fields.itemName && fields.itemName !== oldName) {
+      // itemId のない旧データのみ itemName を更新（新データは getMemberWishlist で解決）
+      guild.wishlists.forEach(w => { if (!w.itemId && w.itemName === oldName) w.itemName = fields.itemName; });
+      guild.assignments.forEach(a => { if (a.itemName === oldName) a.itemName = fields.itemName; });
+    }
   });
 }
 
@@ -163,7 +192,10 @@ export function deleteItem(guildName, itemId) {
     const item = guild.items.find(i => i.id === itemId);
     guild.items = guild.items.filter(i => i.id !== itemId);
     if (item) {
-      guild.wishlists = guild.wishlists.filter(w => w.itemName !== item.itemName);
+      // 新データは itemId で、旧データは itemName で削除
+      guild.wishlists = guild.wishlists.filter(w =>
+        w.itemId ? w.itemId !== itemId : w.itemName !== item.itemName
+      );
     }
   });
 }
@@ -222,16 +254,35 @@ export function getMemberWishlist(guild, memberName) {
   if (!guild) return [];
   return guild.wishlists
     .filter(w => w.memberName === memberName)
+    .map(w => {
+      // itemId があれば items から最新の itemName / auctionName を解決する
+      if (w.itemId) {
+        const item = guild.items.find(it => it.id === w.itemId);
+        if (item) return { ...w, itemName: item.itemName, auctionName: item.auctionName || null };
+      }
+      // 旧データ: itemName で検索して auctionName を補完（一意に特定できる場合のみ）
+      const matches = guild.items.filter(it => it.itemName === w.itemName);
+      const auctionName = matches.length === 1 ? (matches[0].auctionName || null) : null;
+      return { ...w, auctionName };
+    })
     .sort((a, b) => a.rank - b.rank);
 }
 
-export function addWishlistItem(guildName, memberName, itemName) {
+// itemId を受け取り、wishlist に itemId + itemName を保存する
+export function addWishlistItem(guildName, memberName, itemId) {
   return updateGuild(guildName, guild => {
-    if (guild.wishlists.some(w => w.memberName === memberName && w.itemName === itemName)) return;
+    const item = guild.items.find(it => it.id === itemId);
+    if (!item) return;
+    // 重複チェック: 新データは itemId で、旧データは itemName で判定
+    const dup = guild.wishlists.some(w =>
+      w.memberName === memberName &&
+      (w.itemId ? w.itemId === itemId : w.itemName === item.itemName)
+    );
+    if (dup) return;
     const maxRank = guild.wishlists
       .filter(w => w.memberName === memberName)
       .reduce((max, w) => Math.max(max, w.rank), 0);
-    guild.wishlists.push({ id: newId(), memberName, itemName, rank: maxRank + 1 });
+    guild.wishlists.push({ id: newId(), memberName, itemId, itemName: item.itemName, rank: maxRank + 1 });
   });
 }
 
@@ -268,6 +319,88 @@ export function applyWeekAssignments(guildName, week, result) {
     guild.assignments = guild.assignments.filter(a => a.week < week);
     guild.assignments.push(...result.assignments);
     guild.itemRotationPointers = result.updatedPointers;
+  });
+}
+
+// 割り当て済みの週に、まだ含まれていないアイテムを未割当スロットとして追加する
+// auctionName + itemName の複合キーで同名別オークションを区別する
+export function appendMissingItemsToAssignments(guildName) {
+  return updateGuild(guildName, guild => {
+    // 複合キーごとの期待スロット数
+    const expectedByKey = new Map();
+    guild.items.forEach(item => {
+      const key = `${item.auctionName || ''}|${item.itemName}`;
+      const prev = expectedByKey.get(key) || { slots: 0, auctionName: item.auctionName || null, itemName: item.itemName };
+      expectedByKey.set(key, { ...prev, slots: prev.slots + item.slotCount });
+    });
+
+    // 同じ itemName が複数オークションにまたがる「曖昧な名前」を特定
+    const itemNameAuctionSet = new Map();
+    guild.items.forEach(item => {
+      const s = itemNameAuctionSet.get(item.itemName) || new Set();
+      s.add(item.auctionName || null);
+      itemNameAuctionSet.set(item.itemName, s);
+    });
+    const ambiguousNames = new Set(
+      [...itemNameAuctionSet.entries()]
+        .filter(([, s]) => s.size > 1)
+        .map(([name]) => name)
+    );
+
+    // 削除前に全週を確保する（未割当のみの週も再構築対象にするため）
+    const allWeeks = [...new Set(guild.assignments.map(a => a.week))].sort();
+
+    // 未割当スロットを全削除（余剰・重複・枠数変更後の古いスロットを一掃）
+    // 担当者ありスロットのみ残す
+    guild.assignments = guild.assignments.filter(a => a.memberName !== null);
+
+    // 曖昧アイテムの担当者ありスロット（auctionName なし）を各オークションへ移行
+    allWeeks.forEach(week => {
+      ambiguousNames.forEach(itemName => {
+        const oldSlots = guild.assignments.filter(
+          a => a.week === week && a.itemName === itemName && a.auctionName === undefined && a.memberName !== null
+        );
+        if (oldSlots.length === 0) return;
+        const auctionsForItem = [];
+        expectedByKey.forEach(({ slots, auctionName, itemName: iName }) => {
+          if (iName === itemName) auctionsForItem.push({ auctionName, slots });
+        });
+        let memberIdx = 0;
+        for (const { auctionName, slots } of auctionsForItem) {
+          for (let slotNo = 1; slotNo <= slots && memberIdx < oldSlots.length; slotNo++, memberIdx++) {
+            oldSlots[memberIdx].auctionName = auctionName;
+            oldSlots[memberIdx].slotNo = slotNo;
+          }
+        }
+        // 総スロット数を超えた余剰担当者スロットは削除
+        while (memberIdx < oldSlots.length) {
+          const idx = guild.assignments.indexOf(oldSlots[memberIdx++]);
+          if (idx !== -1) guild.assignments.splice(idx, 1);
+        }
+      });
+    });
+
+    // legacy assignment の複合キーを解決するヘルパー
+    function assignKey(a) {
+      if (a.auctionName !== undefined) return `${a.auctionName || ''}|${a.itemName}`;
+      const ms = guild.items.filter(it => it.itemName === a.itemName);
+      return ms.length === 1 ? `${ms[0].auctionName || ''}|${a.itemName}` : `|${a.itemName}`;
+    }
+
+    // 全週（削除前も含む）に対して不足スロットを追加
+    allWeeks.forEach(week => {
+      const actualCounts = new Map();
+      guild.assignments.filter(a => a.week === week).forEach(a => {
+        const key = assignKey(a);
+        actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+      });
+      expectedByKey.forEach(({ slots, auctionName, itemName }, key) => {
+        const actual = actualCounts.get(key) || 0;
+        for (let slot = actual + 1; slot <= slots; slot++) {
+          guild.assignments.push({ week, itemName, auctionName, slotNo: slot, memberName: null, confirmed: false });
+        }
+      });
+    });
   });
 }
 

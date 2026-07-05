@@ -167,6 +167,7 @@ $('logout-btn').addEventListener('click', () => {
 const ADMIN_NAV = [
   { id: 'admin-dashboard', label: 'ダッシュボード' },
   { id: 'member-management', label: 'メンバー管理' },
+  { id: 'auction-management', label: '開催オークション管理' },
   { id: 'item-management', label: 'アイテム管理' },
   { id: 'wishlist-management', label: '希望アイテム管理' },
   { id: 'unavailable-management', label: '欠席管理' },
@@ -200,6 +201,7 @@ const MEMBER_BOTTOM_TABS = [
 // 設定シートの項目（管理者専用）
 const ADMIN_SETTINGS_ITEMS = [
   { id: 'member-management',    label: 'メンバー管理' },
+  { id: 'auction-management',   label: '開催オークション管理' },
   { id: 'item-management',      label: 'アイテム管理' },
   { id: 'wishlist-management',  label: '希望アイテム管理' },
   { id: 'unavailable-management', label: '欠席管理（直接登録）' },
@@ -209,7 +211,7 @@ const ADMIN_SETTINGS_ITEMS = [
 // ビューIDからボトムタブのIDを返す
 function getBottomTabForView(viewId) {
   if (session.role !== 'admin') return viewId;
-  const settingsViews = new Set(['member-management','item-management','wishlist-management','unavailable-management','member-search']);
+  const settingsViews = new Set(['member-management','auction-management','item-management','wishlist-management','unavailable-management','member-search']);
   return settingsViews.has(viewId) ? 'settings' : viewId;
 }
 
@@ -240,6 +242,7 @@ $('settings-sheet-close').addEventListener('click', closeSettingsSheet);
 const RENDERERS = {
   'admin-dashboard': renderAdminDashboard,
   'member-management': renderMemberManagement,
+  'auction-management': renderAuctionManagement,
   'item-management': renderItemManagement,
   'wishlist-management': renderWishlistManagement,
   'unavailable-management': renderUnavailableManagement,
@@ -328,9 +331,19 @@ function populateSundaySelect(selectId, currentValue, pastWeeks = 2, futureWeeks
 // --- 管理者：ダッシュボード ---
 
 // メンバー選択肢を生成。希望者には ★ を付け、文字色を紫にする（iOS非対応のためテキスト記号も併用）
-function memberOptions(members, itemName, selectedName) {
+function memberOptions(members, itemName, selectedName, auctionName) {
   return members.map(m => {
-    const isWisher = currentGuild.wishlists.some(w => w.memberName === m.name && w.itemName === itemName);
+    const isWisher = currentGuild.wishlists.some(w => {
+      if (w.memberName !== m.name) return false;
+      if (w.itemId) {
+        const item = currentGuild.items.find(it => it.id === w.itemId);
+        if (auctionName !== undefined) {
+          return item?.itemName === itemName && (item?.auctionName || null) === (auctionName || null);
+        }
+        return item?.itemName === itemName;
+      }
+      return w.itemName === itemName;
+    });
     const label = isWisher ? `★ ${escapeHtml(m.name)}` : escapeHtml(m.name);
     const style = isWisher ? ' style="color:#7c4dff;font-weight:bold"' : '';
     return `<option value="${escapeHtml(m.name)}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
@@ -341,6 +354,30 @@ const WISH_LEGEND = '<p class="wish-legend"><span class="wish-star">★</span> �
 
 function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
   const allConfirmed = assignments.every(a => a.confirmed);
+
+  const groups = groupAssignmentsByAuction(assignments);
+  const showHeaders = groups.length > 1;
+  const confirmListHTML = groups.map(({ auctionName, rows }) => {
+    const header = showHeaders
+      ? `<div class="auction-group-header"><span>${escapeHtml(auctionName || 'その他')}</span></div>`
+      : '';
+    return header + rows.map(({ a, idx }) => a.confirmed
+      ? `<div class="confirm-row confirmed">
+          <span class="confirm-item">${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}</span>
+          <span class="confirm-winner">✓ ${escapeHtml(a.memberName || '—')}</span>
+          <button class="btn-cancel-confirm" data-week="${week}" data-idx="${idx}">取消</button>
+         </div>`
+      : `<div class="confirm-row">
+          <span class="confirm-item">${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}</span>
+          <select class="confirm-select" data-week="${week}" data-idx="${idx}">
+            <option value="">（未割当）</option>
+            ${memberOptions(members, a.itemName, a.memberName, a.auctionName)}
+          </select>
+          <button class="btn-confirm" data-week="${week}" data-idx="${idx}">落札！</button>
+         </div>`
+    ).join('');
+  }).join('');
+
   return `
     <div class="auction-section ${isPast ? 'auction-past' : ''}" data-week="${week}">
       <div class="auction-header">
@@ -349,23 +386,7 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
           ? '<span class="all-confirmed-badge">✓ 全件確認済み</span>'
           : `<button class="btn-primary btn-sm confirm-all-week-btn" data-week="${week}">全件確認</button>`}
       </div>
-      <div class="confirm-list">
-        ${assignments.map((a, idx) => a.confirmed
-          ? `<div class="confirm-row confirmed">
-              <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
-              <span class="confirm-winner">✓ ${escapeHtml(a.memberName || '—')}</span>
-              <button class="btn-cancel-confirm" data-week="${week}" data-idx="${idx}">取消</button>
-             </div>`
-          : `<div class="confirm-row">
-              <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
-              <select class="confirm-select" data-week="${week}" data-idx="${idx}">
-                <option value="">（未割当）</option>
-                ${memberOptions(members, a.itemName, a.memberName)}
-              </select>
-              <button class="btn-confirm" data-week="${week}" data-idx="${idx}">落札！</button>
-             </div>`
-        ).join('')}
-      </div>
+      <div class="confirm-list">${confirmListHTML}</div>
       ${WISH_LEGEND}
     </div>`;
 }
@@ -474,45 +495,67 @@ function renderAdminDashboard() {
       <div class="next-list">
         ${nextWeekAssignments.map(a => `
           <div class="next-row">
-            <span class="confirm-item">${escapeHtml(a.itemName)}${slotMark(a.slotNo)}</span>
+            <span class="confirm-item">${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}</span>
             <span class="next-winner">${escapeHtml(a.memberName || '—')}</span>
           </div>`).join('')}
       </div>
     </div>`;
 
   // アイテム別落札実績（確認済みのみ）
-  // itemWins = { アイテム名: { メンバー名: 回数 } }
+  // winsKey = `${auctionName||''}|${itemName}` で同名別オークションを区別
   const itemWins = {};
-  guild.items.forEach(it => { itemWins[it.itemName] = {}; });
+  guild.items.forEach(it => {
+    const key = `${it.auctionName || ''}|${it.itemName}`;
+    itemWins[key] = {};
+  });
   guild.assignments
     .filter(a => a.memberName && a.confirmed === true)
     .forEach(a => {
-      if (!itemWins[a.itemName]) itemWins[a.itemName] = {};
-      itemWins[a.itemName][a.memberName] = (itemWins[a.itemName][a.memberName] || 0) + 1;
+      const aName = a.auctionName !== undefined
+        ? (a.auctionName || '')
+        : (guild.items.find(it => it.itemName === a.itemName)?.auctionName || '');
+      const key = `${aName}|${a.itemName}`;
+      if (!itemWins[key]) itemWins[key] = {};
+      itemWins[key][a.memberName] = (itemWins[key][a.memberName] || 0) + 1;
     });
 
-  const hasAnyWins = guild.assignments.some(a => a.memberName && a.confirmed === true);
+  // オークション別にグループ化
+  const auctionOrder = (guild.auctionEvents || []).map(ae => ae.name);
+  const winsGroups = new Map();
+  guild.items.forEach(it => {
+    const k = it.auctionName || null;
+    if (!winsGroups.has(k)) winsGroups.set(k, []);
+    winsGroups.get(k).push(it);
+  });
+  const orderedWinsGroups = [];
+  auctionOrder.forEach(name => { if (winsGroups.has(name)) orderedWinsGroups.push({ auctionName: name, items: winsGroups.get(name) }); });
+  if (winsGroups.has(null)) orderedWinsGroups.push({ auctionName: null, items: winsGroups.get(null) });
+
   $('dashboard-wins').innerHTML = guild.items.length === 0 ? '' : `
     <h3 class="dashboard-wins-title">アイテム別落札実績（確認済み）</h3>
-    ${guild.items.map(it => {
-      const winsForItem = itemWins[it.itemName] || {};
-      const rows = members
-        .map(m => ({ name: m.name, count: winsForItem[m.name] || 0 }))
-        .filter(r => r.count > 0);
-      const maxW = Math.max(0, ...rows.map(r => r.count));
-      return `
-        <div class="item-wins-block">
-          <div class="item-wins-header">${escapeHtml(it.itemName)}</div>
-          ${rows.length === 0
-            ? '<div class="item-wins-empty">まだ落札記録なし</div>'
-            : rows.map(r => `
-              <div class="wins-row">
-                <span class="wins-name">${escapeHtml(r.name)}</span>
-                <div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.round((r.count / maxW) * 100)}%"></div></div>
-                <span class="wins-count">${r.count}回</span>
-              </div>`).join('')}
-        </div>`;
-    }).join('')}`;
+    ${orderedWinsGroups.map(({ auctionName, items }) => `
+      ${auctionName ? `<div class="auction-group-header">${escapeHtml(auctionName)}</div>` : ''}
+      ${items.map(it => {
+        const key = `${it.auctionName || ''}|${it.itemName}`;
+        const winsForItem = itemWins[key] || {};
+        const rows = members
+          .map(m => ({ name: m.name, count: winsForItem[m.name] || 0 }))
+          .filter(r => r.count > 0);
+        const maxW = Math.max(0, ...rows.map(r => r.count));
+        return `
+          <div class="item-wins-block">
+            <div class="item-wins-header">${escapeHtml(it.itemName)}</div>
+            ${rows.length === 0
+              ? '<div class="item-wins-empty">まだ落札記録なし</div>'
+              : rows.map(r => `
+                <div class="wins-row">
+                  <span class="wins-name">${escapeHtml(r.name)}</span>
+                  <div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.round((r.count / maxW) * 100)}%"></div></div>
+                  <span class="wins-count">${r.count}回</span>
+                </div>`).join('')}
+          </div>`;
+      }).join('')}
+    `).join('')}`;
 }
 
 function slotMark(n) {
@@ -630,14 +673,57 @@ $('form-add-member').addEventListener('submit', e => {
   });
 });
 
+// --- 管理者：開催オークション管理 ---
+
+function renderAuctionManagement() {
+  const guild = currentGuild;
+  const auctions = guild.auctionEvents || [];
+  $('auction-table-body').innerHTML = auctions.length === 0
+    ? '<tr><td colspan="2"><p class="empty-state">まだ登録されていません。</p></td></tr>'
+    : auctions.map(ae => `
+        <tr>
+          <td>${escapeHtml(ae.name)}</td>
+          <td><button class="btn-danger" data-del-auction="${escapeHtml(ae.id)}">削除</button></td>
+        </tr>`).join('');
+  $('auction-table-body').querySelectorAll('[data-del-auction]').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      await store.deleteAuctionEvent(session.guildName, btn.dataset.delAuction);
+      await refreshGuild();
+      renderAuctionManagement();
+    }));
+  });
+}
+
+$('form-add-auction').addEventListener('submit', e => {
+  e.preventDefault();
+  withBusyButton(e.target, async () => {
+    const name = $('new-auction-name').value.trim();
+    if (!name) return;
+    await store.addAuctionEvent(session.guildName, name);
+    $('new-auction-name').value = '';
+    await refreshGuild();
+    renderAuctionManagement();
+  });
+});
+
 // --- 管理者：アイテム管理 ---
 
 function renderItemManagement() {
   const guild = currentGuild;
   const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
-  $('item-table-body').innerHTML = guild.items.map(it => {
+
+  // 開催オークション選択肢を更新（登録済み + その他）
+  const auctionSel = $('new-item-auction');
+  const auctions = guild.auctionEvents || [];
+  auctionSel.innerHTML = auctions
+    .map(ae => `<option value="${escapeHtml(ae.name)}">${escapeHtml(ae.name)}</option>`)
+    .join('') + '<option value="">その他</option>';
+
+  const tbody = $('item-table-body');
+  tbody.innerHTML = '';
+  guild.items.forEach(it => {
     const wishers = guild.wishlists
-      .filter(w => w.itemName === it.itemName)
+      .filter(w => w.itemId ? w.itemId === it.id : w.itemName === it.itemName)
       .sort((a, b) => {
         const ma = members.findIndex(m => m.name === a.memberName);
         const mb = members.findIndex(m => m.name === b.memberName);
@@ -647,30 +733,70 @@ function renderItemManagement() {
     const wisherBadge = wishers.length === 0
       ? '<span class="wisher-none">なし</span>'
       : `<span class="wisher-count">${wishers.length}人</span><span class="wisher-names">${wishers.map(escapeHtml).join('・')}</span>`;
-    return `
-      <tr>
-        <td>${escapeHtml(it.itemName)}</td>
-        <td>${it.slotCount}</td>
-        <td class="wisher-cell">${wisherBadge}</td>
-        <td><button class="btn-danger" data-del-item="${it.id}">削除</button></td>
-      </tr>`;
-  }).join('');
-  $('item-table-body').querySelectorAll('[data-del-item]').forEach(btn => {
-    btn.addEventListener('click', () => withBusyAction(btn, async () => {
-      await store.deleteItem(session.guildName, btn.dataset.delItem);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(it.auctionName || 'その他')}</td>
+      <td>${escapeHtml(it.itemName)}</td>
+      <td>${it.slotCount}</td>
+      <td class="wisher-cell">${wisherBadge}</td>
+      <td class="item-action-cell">
+        <button class="btn-secondary" data-edit-item="${it.id}">編集</button>
+        <button class="btn-danger" data-del-item="${it.id}">削除</button>
+      </td>`;
+
+    tr.querySelector('[data-edit-item]').addEventListener('click', () => enterItemEditMode(tr, it));
+    tr.querySelector('[data-del-item]').addEventListener('click', e => withBusyAction(e.currentTarget, async () => {
+      await store.deleteItem(session.guildName, it.id);
       await refreshGuild();
       renderItemManagement();
     }));
+
+    tbody.appendChild(tr);
+  });
+}
+
+function enterItemEditMode(tr, it) {
+  const auctions = currentGuild.auctionEvents || [];
+  const auctionOptions = auctions
+    .map(ae => `<option value="${escapeHtml(ae.name)}" ${ae.name === it.auctionName ? 'selected' : ''}>${escapeHtml(ae.name)}</option>`)
+    .join('') + `<option value="" ${!it.auctionName ? 'selected' : ''}>その他</option>`;
+
+  tr.innerHTML = `
+    <td colspan="5">
+      <form class="item-edit-form inline-form">
+        <label>開催オークション <select class="item-edit-auction">${auctionOptions}</select></label>
+        <input type="text" class="item-edit-name" value="${escapeHtml(it.itemName)}" required>
+        <label>枠数 <input type="number" class="item-edit-slots" min="1" value="${it.slotCount}" required></label>
+        <button type="submit" class="btn-primary">保存</button>
+        <button type="button" class="btn-secondary">キャンセル</button>
+      </form>
+    </td>`;
+
+  tr.querySelector('button[type="button"]').addEventListener('click', () => renderItemManagement());
+  tr.querySelector('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const auctionName = tr.querySelector('.item-edit-auction').value || null;
+    const itemName = tr.querySelector('.item-edit-name').value.trim();
+    const slotCount = parseInt(tr.querySelector('.item-edit-slots').value, 10);
+    if (!itemName || !slotCount) return;
+    const saveBtn = tr.querySelector('button[type="submit"]');
+    withBusyAction(saveBtn, async () => {
+      await store.updateItem(session.guildName, it.id, { itemName, slotCount, auctionName });
+      await refreshGuild();
+      renderItemManagement();
+    });
   });
 }
 
 $('form-add-item').addEventListener('submit', e => {
   e.preventDefault();
   withBusyButton(e.target, async () => {
+    const auctionName = $('new-item-auction').value || null;
     const itemName = $('new-item-name').value.trim();
     const slotCount = parseInt($('new-item-slots').value, 10);
     if (!itemName || !slotCount) return;
-    await store.addItem(session.guildName, itemName, slotCount);
+    await store.addItem(session.guildName, itemName, slotCount, auctionName);
     $('form-add-item').reset();
     $('new-item-slots').value = 1;
     await refreshGuild();
@@ -679,6 +805,42 @@ $('form-add-item').addEventListener('submit', e => {
 });
 
 // --- 管理者：希望アイテム管理 ---
+
+// アイテム名に開催オークション名を付けた表示ラベルを返す（itemName のみ分かる場面用）
+function itemDisplayLabel(itemName) {
+  const item = currentGuild.items.find(it => it.itemName === itemName);
+  return item?.auctionName ? `【${item.auctionName}】${itemName}` : itemName;
+}
+
+// assignment オブジェクトからラベルを返す（auctionName が直接入っている場合はそれを優先）
+function assignmentDisplayLabel(a) {
+  const auctionName = a.auctionName !== undefined
+    ? a.auctionName
+    : (currentGuild.items.find(it => it.itemName === a.itemName)?.auctionName || null);
+  return auctionName ? `【${auctionName}】${a.itemName}` : a.itemName;
+}
+
+// assignments を開催オークションでグループ分けし、元インデックスを保持して返す
+function groupAssignmentsByAuction(assignments) {
+  const auctionOrder = (currentGuild.auctionEvents || []).map(ae => ae.name);
+  const groups = new Map();
+  assignments.forEach((a, idx) => {
+    // auctionName が assignment に直接入っている場合はそれを使う（より正確）
+    const key = a.auctionName !== undefined
+      ? (a.auctionName || null)
+      : (currentGuild.items.find(it => it.itemName === a.itemName)?.auctionName ?? null);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ a, idx });
+  });
+  const result = [];
+  auctionOrder.forEach(name => { if (groups.has(name)) result.push({ auctionName: name, rows: groups.get(name) }); });
+  // auctionEvents に存在しない名前（削除済みイベントの旧データなど）も安全に表示
+  groups.forEach((rows, name) => {
+    if (name !== null && !auctionOrder.includes(name)) result.push({ auctionName: name, rows });
+  });
+  if (groups.has(null)) result.push({ auctionName: null, rows: groups.get(null) });
+  return result;
+}
 
 let selectedWishlistMember = null;
 let wishlistDragSourceId = null;
@@ -710,12 +872,39 @@ function renderWishlistList() {
   const guild = currentGuild;
   const wishlist = store.getMemberWishlist(guild, selectedWishlistMember);
 
-  const wishedItemNames = new Set(wishlist.map(w => w.itemName));
-  const availableItems = guild.items.filter(it => !wishedItemNames.has(it.itemName));
+  // 選択済みアイテムを itemId で除外する
+  // 旧データ（itemId なし）は itemName で一意に特定できる場合のみそのアイテムを除外し、
+  // 同名別オークションのアイテムは誤って除外しない
+  const wishedItemIds = new Set(wishlist.map(w => {
+    if (w.itemId) return w.itemId;
+    const matches = guild.items.filter(it => it.itemName === w.itemName);
+    return matches.length === 1 ? matches[0].id : null;
+  }).filter(Boolean));
+  const availableItems = guild.items.filter(it => !wishedItemIds.has(it.id));
   const itemSelect = $('wishlist-item-select');
-  itemSelect.innerHTML = availableItems.length
-    ? availableItems.map(it => `<option value="${escapeHtml(it.itemName)}">${escapeHtml(it.itemName)}</option>`).join('')
-    : '<option value="">追加できるアイテムがありません</option>';
+  if (!availableItems.length) {
+    itemSelect.innerHTML = '<option value="">追加できるアイテムがありません</option>';
+  } else {
+    const auctionOrder = (guild.auctionEvents || []).map(ae => ae.name);
+    const itemGroups = new Map();
+    availableItems.forEach(it => {
+      const key = it.auctionName || null;
+      if (!itemGroups.has(key)) itemGroups.set(key, []);
+      itemGroups.get(key).push(it);
+    });
+    const orderedGroups = [];
+    auctionOrder.forEach(name => { if (itemGroups.has(name)) orderedGroups.push({ name, items: itemGroups.get(name) }); });
+    if (itemGroups.has(null)) orderedGroups.push({ name: null, items: itemGroups.get(null) });
+
+    // option の value は itemId（サーバー側で正確に区別するため）
+    itemSelect.innerHTML = orderedGroups.length > 1
+      ? orderedGroups.map(({ name, items }) =>
+          `<optgroup label="${escapeHtml(name || 'その他')}">${
+            items.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.itemName)}</option>`).join('')
+          }</optgroup>`
+        ).join('')
+      : availableItems.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(itemDisplayLabel(it.itemName))}</option>`).join('');
+  }
 
   const list = $('wishlist-list');
   list.innerHTML = '';
@@ -728,7 +917,11 @@ function renderWishlistList() {
     const li = document.createElement('li');
     li.draggable = true;
     li.dataset.id = w.id;
-    li.innerHTML = `<span><span class="order-no">${i + 1}.</span>${escapeHtml(w.itemName)}</span>`;
+    const wLabel = w.auctionName ? `【${w.auctionName}】${w.itemName}` : w.itemName;
+    // itemId のない旧データかつ同名アイテムが複数ある場合は判別不能 → 再登録を促す
+    const isAmbiguous = !w.itemId && guild.items.filter(it => it.itemName === w.itemName).length > 1;
+    const badge = isAmbiguous ? '<span class="badge-reregister">⚠ 削除して再登録</span>' : '';
+    li.innerHTML = `<span><span class="order-no">${i + 1}.</span>${escapeHtml(wLabel)}${badge}</span>`;
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
@@ -771,9 +964,9 @@ $('wishlist-member-select').addEventListener('change', e => {
 $('form-add-wishlist-item').addEventListener('submit', e => {
   e.preventDefault();
   withBusyButton(e.target, async () => {
-    const itemName = $('wishlist-item-select').value;
-    if (!itemName || !selectedWishlistMember) return;
-    await store.addWishlistItem(session.guildName, selectedWishlistMember, itemName);
+    const itemId = $('wishlist-item-select').value;
+    if (!itemId || !selectedWishlistMember) return;
+    await store.addWishlistItem(session.guildName, selectedWishlistMember, itemId);
     await refreshGuild();
     renderWishlistList();
   });
@@ -940,8 +1133,96 @@ function runMultipleWeeksInMemory(guild, startWeek, count) {
   return { allAssignments, finalPointers: {} };
 }
 
+function updateDiffAssignStatus() {
+  const guild = currentGuild;
+  const assignedWeeks = [...new Set(guild.assignments.map(a => a.week))];
+  const btn = $('diff-assign-btn');
+
+  if (assignedWeeks.length === 0) {
+    $('diff-assign-status').innerHTML = '<div class="assigned-status assigned-none">まだ割り当てがありません</div>';
+    btn.classList.add('hidden');
+    return;
+  }
+
+  // auctionName + itemName の複合キーで期待スロット数を計算
+  const expectedByKey = new Map();
+  guild.items.forEach(item => {
+    const key = `${item.auctionName || ''}|${item.itemName}`;
+    const prev = expectedByKey.get(key) || { slots: 0, label: item.auctionName ? `【${item.auctionName}】${item.itemName}` : item.itemName };
+    expectedByKey.set(key, { ...prev, slots: prev.slots + item.slotCount });
+  });
+
+  function assignKey(a) {
+    if (a.auctionName !== undefined) return `${a.auctionName || ''}|${a.itemName}`;
+    const ms = guild.items.filter(it => it.itemName === a.itemName);
+    return ms.length === 1 ? `${ms[0].auctionName || ''}|${a.itemName}` : `|${a.itemName}`;
+  }
+
+  const missingMap = new Map();
+  assignedWeeks.forEach(week => {
+    const actualCounts = new Map();
+    guild.assignments.filter(a => a.week === week).forEach(a => {
+      const key = assignKey(a);
+      actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+    });
+    expectedByKey.forEach(({ slots, label }, key) => {
+      const actual = actualCounts.get(key) || 0;
+      if (actual < slots) {
+        const prev = missingMap.get(key) || { label, weeks: 0 };
+        missingMap.set(key, { label, weeks: prev.weeks + 1 });
+      }
+    });
+  });
+
+  // 余剰・孤立スロット検出（枠数変更後の古いスロット、重複追加など）
+  let needsCleanup = false;
+  assignedWeeks.forEach(week => {
+    const unassignedByKey = new Map();
+    const assignedByKey = new Map();
+    guild.assignments.filter(a => a.week === week).forEach(a => {
+      const key = assignKey(a);
+      if (a.memberName !== null) assignedByKey.set(key, (assignedByKey.get(key) || 0) + 1);
+      else unassignedByKey.set(key, (unassignedByKey.get(key) || 0) + 1);
+    });
+    unassignedByKey.forEach((count, key) => {
+      if (!expectedByKey.has(key)) { needsCleanup = true; return; } // 孤立キー
+      const assigned = assignedByKey.get(key) || 0;
+      const expectedUnassigned = Math.max(0, expectedByKey.get(key).slots - assigned);
+      if (count > expectedUnassigned) needsCleanup = true; // 余剰スロット
+    });
+  });
+
+  if (missingMap.size === 0 && !needsCleanup) {
+    $('diff-assign-status').innerHTML = '<div class="assigned-status assigned-ok">✓ 全アイテムが割り当て済みです</div>';
+    btn.classList.add('hidden');
+  } else {
+    let html = '';
+    if (missingMap.size > 0) {
+      const lines = [...missingMap.values()]
+        .map(({ label, weeks }) => `<div>・${escapeHtml(label)}: ${weeks}週分が未追加</div>`)
+        .join('');
+      html += `<div class="assigned-status assigned-warn">${lines}</div>`;
+    }
+    if (needsCleanup) {
+      html += '<div class="assigned-status assigned-warn">・余剰・重複スロットの整理が必要です</div>';
+    }
+    $('diff-assign-status').innerHTML = `<div class="assigned-status assigned-warn">${html}</div>`;
+    btn.classList.remove('hidden');
+  }
+}
+
+$('diff-assign-btn').addEventListener('click', () => withBusyAction($('diff-assign-btn'), async () => {
+  await store.appendMissingItemsToAssignments(session.guildName);
+  await refreshGuild();
+  updateDiffAssignStatus();
+  showToast('割り当て済みの週に追加しました。カレンダーから担当を割り振れます');
+}));
+
 function renderAutoAssign() {
   const thisWeek = getCurrentWeek();
+
+  // 差分追加セクション
+  updateDiffAssignStatus();
 
   // 一括実行: 設定済み状況と開始週セレクト
   updateBulkAssignedStatus();
@@ -1178,18 +1459,27 @@ function renderCalendar() {
   // ⑦ map内で毎行ソートしないよう事前に1回だけソートしておく
   const sortedMembers = [...currentGuild.members].sort((x, y) => x.orderNo - y.orderNo);
 
-  $('calendar-table-body').innerHTML = rows.length
-    ? rows.map((a, idx) => {
+  if (rows.length) {
+    const calGroups = groupAssignmentsByAuction(rows);
+    const showCalHeaders = calGroups.length > 1;
+    $('calendar-table-body').innerHTML = calGroups.map(({ auctionName, rows: gRows }) => {
+      const headerRow = showCalHeaders
+        ? `<tr class="calendar-auction-group-tr"><td colspan="3"><div class="auction-group-header" style="margin:2px 0">${escapeHtml(auctionName || 'その他')}</div></td></tr>`
+        : '';
+      return headerRow + gRows.map(({ a, idx }) => {
         const isMine = session.role === 'member' && a.memberName === session.memberName;
         const cell = session.role === 'admin'
           ? `<select class="calendar-member-select" data-idx="${idx}">
                <option value="">（未割当）</option>
-               ${memberOptions(sortedMembers, a.itemName, a.memberName)}
+               ${memberOptions(sortedMembers, a.itemName, a.memberName, a.auctionName)}
              </select>`
           : `<span class="${isMine ? 'calendar-mine-name' : ''}">${escapeHtml(a.memberName) || '（未割当）'}</span>`;
-        return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
-      }).join('')
-    : '<tr><td colspan="3">この週の割り当てはまだありません<br><small>「自動割り当て」から実行してください</small></td></tr>';
+        return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${escapeHtml(assignmentDisplayLabel(a))}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
+      }).join('');
+    }).join('');
+  } else {
+    $('calendar-table-body').innerHTML = '<tr><td colspan="3">この週の割り当てはまだありません<br><small>「自動割り当て」から実行してください</small></td></tr>';
+  }
 
   if (session.role === 'admin') {
     $('calendar-table-body').querySelectorAll('.calendar-member-select').forEach(sel => {
