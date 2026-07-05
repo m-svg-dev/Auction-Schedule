@@ -1196,17 +1196,14 @@ function updateDiffAssignStatus() {
     $('diff-assign-status').innerHTML = '<div class="assigned-status assigned-ok">✓ 全アイテムが割り当て済みです</div>';
     btn.classList.add('hidden');
   } else {
-    let html = '';
+    const lines = [];
     if (missingMap.size > 0) {
-      const lines = [...missingMap.values()]
-        .map(({ label, weeks }) => `<div>・${escapeHtml(label)}: ${weeks}週分が未追加</div>`)
-        .join('');
-      html += `<div class="assigned-status assigned-warn">${lines}</div>`;
+      [...missingMap.values()].forEach(({ label, weeks }) => lines.push(`・${escapeHtml(label)}: ${weeks}週分が未追加`));
     }
     if (needsCleanup) {
-      html += '<div class="assigned-status assigned-warn">・余剰・重複スロットの整理が必要です</div>';
+      lines.push('・余剰・重複スロットの整理が必要です');
     }
-    $('diff-assign-status').innerHTML = `<div class="assigned-status assigned-warn">${html}</div>`;
+    $('diff-assign-status').innerHTML = `<div class="assigned-status assigned-warn">${lines.map(l => `<div>${l}</div>`).join('')}</div>`;
     btn.classList.remove('hidden');
   }
 }
@@ -1494,9 +1491,19 @@ function renderCalendar() {
     });
     // 凡例（管理者かつ希望者がいる場合のみ表示）
     if (session.role === 'admin') {
-      const hasWishers = calendarState.assignments.some(a =>
-        currentGuild.wishlists.some(w => w.itemName === a.itemName)
-      );
+      const hasWishers = calendarState.assignments.some(a => {
+        const aAuction = a.auctionName !== undefined
+          ? (a.auctionName || null)
+          : (currentGuild.items.find(it => it.itemName === a.itemName)?.auctionName || null);
+        return currentGuild.wishlists.some(w => {
+          if (w.itemId) {
+            const wItem = currentGuild.items.find(it => it.id === w.itemId);
+            return wItem && wItem.itemName === a.itemName && (wItem.auctionName || null) === aAuction;
+          }
+          // 旧形式: 同名アイテムが一意な場合のみマッチ
+          return w.itemName === a.itemName && currentGuild.items.filter(it => it.itemName === a.itemName).length === 1;
+        });
+      });
       const legendEl = document.querySelector('#view-calendar .wish-legend');
       if (!legendEl && hasWishers) {
         $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND);
@@ -1557,7 +1564,7 @@ function showMemberSearchResults(memberName) {
   }
   const results = store.searchAssignmentsByMember(currentGuild, memberName);
   $('search-result-body').innerHTML = results.length
-    ? results.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    ? results.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(assignmentDisplayLabel(a))}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
     : '<tr><td colspan="3">担当の記録がありません</td></tr>';
 }
 
@@ -1576,7 +1583,7 @@ function renderMemberHome() {
   $('member-home-cards').innerHTML = `
     <div class="card gold">
       <div class="label">今週の担当 ${formatSundayShort(thisWeek)}</div>
-      <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
+      <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
     </div>
     <div class="card purple">
       <div class="label">今後の担当件数</div>
@@ -1585,7 +1592,7 @@ function renderMemberHome() {
   `;
 
   $('member-home-table-body').innerHTML = upcoming.length
-    ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(a.itemName)}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
+    ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(assignmentDisplayLabel(a))}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')
     : '<tr><td colspan="3">今後の担当はありません</td></tr>';
 }
 
