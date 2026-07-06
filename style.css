@@ -436,6 +436,14 @@ button:disabled {
   background: var(--color-purple);
   opacity: 0.25;
 }
+.group-date-hint {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+
 .calendar-auction-group-tr td {
   padding: 0;
   border: none;
@@ -512,6 +520,11 @@ button:disabled {
 .auction-date { font-weight: bold; color: var(--color-purple); font-size: 0.9rem; }
 .next-label { color: var(--color-text-muted); }
 .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+
+.ae-actions-cell { display: flex; gap: 6px; align-items: center; }
+.ae-edit-schedule { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ae-edit-schedule select, .ae-edit-schedule input[type="time"] { font-size: 0.85rem; padding: 4px 6px; }
+.text-muted { color: var(--color-text-muted); font-size: 0.85rem; }
 
 .confirm-list { display: flex; flex-direction: column; gap: 8px; }
 .confirm-row {
@@ -625,11 +638,34 @@ button:disabled {
 .auction-picker-container {
   margin: 10px 0;
 }
+.auction-picker-box {
+  background: #f8f9ff;
+  border: 1px solid #c5cae9;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
 .auction-picker-label {
   font-size: 0.88rem;
   font-weight: bold;
-  margin-bottom: 8px;
-  color: var(--color-text);
+  margin-bottom: 10px;
+  color: #3949ab;
+}
+.auction-picker-guide {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.picker-guide-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.guide-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 .auction-picker-checks {
   display: flex;

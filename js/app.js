@@ -1,6 +1,6 @@
 import * as store from './storage.js';
 import { generateWeekAssignments } from './rotation.js';
-import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday, formatSundayShort } from './calendar.js';
+import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday, formatSundayShort, getMondayOfISOWeek } from './calendar.js';
 
 // XSS対策: ユーザー入力値をinnerHTMLに埋め込む前に必ずこの関数を通す
 function escapeHtml(str) {
@@ -319,10 +319,10 @@ async function navigateTo(viewId) {
 function populateSundaySelect(selectId, currentValue, pastWeeks = 2, futureWeeks = 12) {
   const sel = $(selectId);
   const thisWeek = getCurrentWeek();
-  const opts = ['<option value="">日曜日を選択してください</option>'];
+  const opts = ['<option value="">週を選択してください</option>'];
   for (let i = -pastWeeks; i <= futureWeeks; i++) {
     const week = addWeeks(thisWeek, i);
-    const label = formatSunday(week);
+    const label = formatWeekRange(week);
     opts.push(`<option value="${week}" ${week === currentValue ? 'selected' : ''}>${label}</option>`);
   }
   sel.innerHTML = opts.join('');
@@ -358,8 +358,10 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
   const groups = groupAssignmentsByAuction(assignments);
   const showHeaders = groups.length > 1;
   const confirmListHTML = groups.map(({ auctionName, rows }) => {
+    const ae = (currentGuild.auctionEvents || []).find(a => a.name === auctionName);
+    const dateStr = auctionDateLabelInWeek(ae, week);
     const header = showHeaders
-      ? `<div class="auction-group-header"><span>${escapeHtml(auctionName || 'その他')}</span></div>`
+      ? `<div class="auction-group-header"><span>${escapeHtml(auctionName || 'その他')}${dateStr ? `<small class="group-date-hint">${escapeHtml(dateStr)}</small>` : ''}</span></div>`
       : '';
     return header + rows.map(({ a, idx }) => a.confirmed
       ? `<div class="confirm-row confirmed">
@@ -463,7 +465,7 @@ function renderAdminDashboard() {
   for (const week of pastUnconfirmed) {
     const wa = store.getAssignmentsForWeek(guild, week);
     if (wa.length > 0) {
-      auctionHTML += buildAuctionSectionHTML(week, wa, members, `${formatSunday(week)} 未確認の落札があります`, true);
+      auctionHTML += buildAuctionSectionHTML(week, wa, members, `${formatWeekRange(week)} 未確認の落札があります`, true);
     }
   }
 
@@ -471,11 +473,11 @@ function renderAdminDashboard() {
   if (thisWeekAssignments.length === 0) {
     auctionHTML += `
       <div class="auction-section">
-        <div class="auction-header"><span class="auction-date">${formatSunday(thisWeek)} 今週のオークション</span></div>
+        <div class="auction-header"><span class="auction-date">${formatWeekRange(thisWeek)} 今週のオークション</span></div>
         <p class="empty-state">まだ割り当てがありません。「自動割り当て」から実行してください。</p>
       </div>`;
   } else {
-    auctionHTML += buildAuctionSectionHTML(thisWeek, thisWeekAssignments, members, `${formatSunday(thisWeek)} 今週のオークション`, false);
+    auctionHTML += buildAuctionSectionHTML(thisWeek, thisWeekAssignments, members, `${formatWeekRange(thisWeek)} 今週のオークション`, false);
   }
 
   $('dashboard-auction-now').innerHTML = auctionHTML;
@@ -491,7 +493,7 @@ function renderAdminDashboard() {
   const nextWeekAssignments = store.getAssignmentsForWeek(guild, nextWeek);
   $('dashboard-next').innerHTML = nextWeekAssignments.length === 0 ? '' : `
     <div class="auction-section next-week">
-      <div class="auction-header"><span class="auction-date next-label">${formatSunday(nextWeek)} 次週の予定</span></div>
+      <div class="auction-header"><span class="auction-date next-label">${formatWeekRange(nextWeek)} 次週の予定</span></div>
       <div class="next-list">
         ${nextWeekAssignments.map(a => `
           <div class="next-row">
@@ -683,23 +685,76 @@ function auctionScheduleLabel(ae) {
   return [day, ae.time].filter(Boolean).join(' ');
 }
 
+// その週の中でオークションが開催される実日付を「7/9(水)」形式で返す
+function auctionDateLabelInWeek(ae, week) {
+  if (ae == null || ae.dayOfWeek == null) return '';
+  const monday = getMondayOfISOWeek(week);
+  const offset = ae.dayOfWeek === 0 ? 6 : ae.dayOfWeek - 1;
+  const d = new Date(monday);
+  d.setUTCDate(monday.getUTCDate() + offset);
+  const DAY_SHORT = ['日', '月', '火', '水', '木', '金', '土'];
+  const dateStr = `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${DAY_SHORT[d.getUTCDay()]})`;
+  return ae.time ? `${dateStr} ${ae.time}` : dateStr;
+}
+
 function renderAuctionManagement() {
   const guild = currentGuild;
   const auctions = guild.auctionEvents || [];
   $('auction-table-body').innerHTML = auctions.length === 0
     ? '<tr><td colspan="3"><p class="empty-state">まだ登録されていません。</p></td></tr>'
     : auctions.map(ae => `
-        <tr>
-          <td>${escapeHtml(ae.name)}</td>
-          <td>${escapeHtml(auctionScheduleLabel(ae))}</td>
-          <td><button class="btn-danger" data-del-auction="${escapeHtml(ae.id)}">削除</button></td>
+        <tr data-ae-id="${escapeHtml(ae.id)}">
+          <td class="ae-name-cell">${escapeHtml(ae.name)}</td>
+          <td class="ae-schedule-cell">${escapeHtml(auctionScheduleLabel(ae)) || '<span class="text-muted">未設定</span>'}</td>
+          <td class="ae-actions-cell">
+            <button class="btn-secondary btn-sm" data-edit-auction="${escapeHtml(ae.id)}">編集</button>
+            <button class="btn-danger btn-sm" data-del-auction="${escapeHtml(ae.id)}">削除</button>
+          </td>
         </tr>`).join('');
+
   $('auction-table-body').querySelectorAll('[data-del-auction]').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.deleteAuctionEvent(session.guildName, btn.dataset.delAuction);
       await refreshGuild();
       renderAuctionManagement();
     }));
+  });
+
+  $('auction-table-body').querySelectorAll('[data-edit-auction]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const aeId = btn.dataset.editAuction;
+      const ae = (currentGuild.auctionEvents || []).find(a => a.id === aeId);
+      if (!ae) return;
+      const tr = btn.closest('tr');
+      tr.innerHTML = `
+        <td><input type="text" class="ae-edit-name" value="${escapeHtml(ae.name)}" required></td>
+        <td class="ae-edit-schedule">
+          <select class="ae-edit-day">
+            <option value="">曜日（任意）</option>
+            ${DAY_NAMES.map((d, i) => `<option value="${i}" ${ae.dayOfWeek === i ? 'selected' : ''}>${d}曜日</option>`).join('')}
+          </select>
+          <input type="time" class="ae-edit-time" value="${ae.time || ''}">
+        </td>
+        <td class="ae-actions-cell">
+          <button class="btn-primary btn-sm ae-save-btn" data-ae-id="${escapeHtml(aeId)}">保存</button>
+          <button class="btn-secondary btn-sm ae-cancel-btn">キャンセル</button>
+        </td>`;
+
+      tr.querySelector('.ae-cancel-btn').addEventListener('click', () => renderAuctionManagement());
+      tr.querySelector('.ae-save-btn').addEventListener('click', async (saveBtn) => {
+        const saveBtnEl = tr.querySelector('.ae-save-btn');
+        withBusyAction(saveBtnEl, async () => {
+          const newName = tr.querySelector('.ae-edit-name').value.trim();
+          if (!newName) return;
+          const dayVal = tr.querySelector('.ae-edit-day').value;
+          const dayOfWeek = dayVal !== '' ? Number(dayVal) : null;
+          const time = tr.querySelector('.ae-edit-time').value || null;
+          await store.updateAuctionEvent(session.guildName, aeId, { name: newName, dayOfWeek, time });
+          await refreshGuild();
+          renderAuctionManagement();
+        });
+      });
+    });
   });
 }
 
@@ -1657,28 +1712,33 @@ function renderMemberUnavailableRequest() {
 function renderAuctionPicker(week) {
   const container = $('member-unavail-auction-picker');
   const auctions = currentGuild.auctionEvents || [];
-  if (auctions.length === 0) { container.innerHTML = ''; return; }
+  if (!week || auctions.length === 0) { container.innerHTML = ''; return; }
 
-  // すでにこの週・このメンバーが申請済みのオークションは無効化
   const alreadyRequested = new Set(
     currentGuild.unavailableWeeks
       .filter(u => u.week === week && u.memberName === session.memberName && u.status !== 'rejected')
       .map(u => u.auctionEventId || '__all__')
   );
 
+  const weekLabel = formatWeekRange(week);
   container.innerHTML = `
-    <div class="auction-picker-label">参加できないオークションを選択（複数可）</div>
-    <div class="auction-picker-checks">
-      ${auctions.map(ae => {
-        const schedule = auctionScheduleLabel(ae);
-        const disabled = alreadyRequested.has(ae.id) || alreadyRequested.has('__all__') ? 'disabled' : '';
-        return `<label class="auction-check-item ${disabled ? 'disabled' : ''}">
-          <input type="checkbox" name="unavail-auction" value="${escapeHtml(ae.id)}" data-name="${escapeHtml(ae.name)}" ${disabled}>
-          <span>${escapeHtml(ae.name)}${schedule ? `<small class="auction-schedule-hint">（${escapeHtml(schedule)}）</small>` : ''}</span>
-        </label>`;
-      }).join('')}
-    </div>
-    <p class="hint">未選択の場合は全オークション対象として申請されます。</p>`;
+    <div class="auction-picker-box">
+      <div class="auction-picker-label">【${escapeHtml(weekLabel)}】参加できないオークションを選んでください</div>
+      <div class="auction-picker-checks">
+        ${auctions.map(ae => {
+          const schedule = auctionScheduleLabel(ae);
+          const disabled = alreadyRequested.has(ae.id) || alreadyRequested.has('__all__') ? 'disabled' : '';
+          return `<label class="auction-check-item ${disabled ? 'disabled' : ''}">
+            <input type="checkbox" name="unavail-auction" value="${escapeHtml(ae.id)}" data-name="${escapeHtml(ae.name)}" ${disabled}>
+            <span>${escapeHtml(ae.name)}${schedule ? `<small class="auction-schedule-hint">（${escapeHtml(schedule)}）</small>` : ''}</span>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="auction-picker-guide">
+        <div class="picker-guide-row"><span class="guide-icon">☑</span><span>チェックあり → 選んだオークションだけ欠席（<strong>この週のみ</strong>）</span></div>
+        <div class="picker-guide-row"><span class="guide-icon">□</span><span>全て未チェック → この週の全オークションを欠席</span></div>
+      </div>
+    </div>`;
 }
 
 function checkUnavailConflict(week) {
@@ -1689,7 +1749,7 @@ function checkUnavailConflict(week) {
   );
   if (myAssignments.length > 0) {
     const labels = [...new Set(myAssignments.map(a => assignmentDisplayLabel(a)))].join('・');
-    warning.textContent = `⚠ ${formatSundayShort(week)} は ${labels} の担当に割り当てられています。連絡後、管理者が承認すると担当から外されます。`;
+    warning.textContent = `⚠ ${formatWeekRange(week)} は ${labels} の担当に割り当てられています。連絡後、管理者が承認すると担当から外されます。`;
     warning.classList.remove('hidden');
   } else {
     warning.classList.add('hidden');

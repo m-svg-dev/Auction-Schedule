@@ -160,7 +160,14 @@ export function addAuctionEvent(guildName, name, dayOfWeek, time) {
 export function updateAuctionEvent(guildName, eventId, fields) {
   return updateGuild(guildName, guild => {
     const ae = guild.auctionEvents.find(e => e.id === eventId);
-    if (ae) Object.assign(ae, fields);
+    if (!ae) return;
+    const oldName = ae.name;
+    Object.assign(ae, fields);
+    if (fields.name && fields.name !== oldName) {
+      guild.items.forEach(it => { if (it.auctionName === oldName) it.auctionName = fields.name; });
+      guild.assignments.forEach(a => { if (a.auctionName === oldName) a.auctionName = fields.name; });
+      guild.unavailableWeeks.forEach(u => { if (u.auctionName === oldName) u.auctionName = fields.name; });
+    }
   });
 }
 

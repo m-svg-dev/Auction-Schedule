@@ -35,11 +35,13 @@ export function getCurrentWeek() {
   return getISOWeekString(new Date());
 }
 
+const DAY_SHORT = ['日', '月', '火', '水', '木', '金', '土'];
+
 export function formatWeekRange(weekStr) {
   const monday = getMondayOfISOWeek(weekStr);
   const sunday = new Date(monday);
   sunday.setUTCDate(monday.getUTCDate() + 6);
-  const fmt = d => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  const fmt = d => `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${DAY_SHORT[d.getUTCDay()]})`;
   return `${fmt(monday)}〜${fmt(sunday)}`;
 }
 
