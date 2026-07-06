@@ -1488,7 +1488,7 @@ function recalcCalendar() {
 
 function renderCalendar() {
   const week = currentCalendarWeek;
-  $('calendar-week-label').textContent = `${formatSunday(week)}（${formatWeekRange(week)}）`;
+  $('calendar-week-label').textContent = `今週のオークション ${formatWeekRange(week)}`;
 
   // 未保存の編集中（dirty=true）のみ状態を保持し、それ以外は常に最新データで再初期化する
   // ※ navigateTo() が refreshGuild() を呼んだ後にここに来るので currentGuild は常に最新
@@ -1536,8 +1536,10 @@ function renderCalendar() {
     const calGroups = groupAssignmentsByAuction(rows);
     const showCalHeaders = calGroups.length > 1;
     $('calendar-table-body').innerHTML = calGroups.map(({ auctionName, rows: gRows }) => {
+      const ae = (currentGuild.auctionEvents || []).find(a => a.name === auctionName);
+      const dateStr = auctionDateLabelInWeek(ae, week);
       const headerRow = showCalHeaders
-        ? `<tr class="calendar-auction-group-tr"><td colspan="3"><div class="auction-group-header" style="margin:2px 0">${escapeHtml(auctionName || 'その他')}</div></td></tr>`
+        ? `<tr class="calendar-auction-group-tr"><td colspan="3"><div class="auction-group-header" style="margin:2px 0">${escapeHtml(auctionName || 'その他')}${dateStr ? `<small class="group-date-hint">${escapeHtml(dateStr)}</small>` : ''}</div></td></tr>`
         : '';
       return headerRow + gRows.map(({ a, idx }) => {
         const isMine = session.role === 'member' && a.memberName === session.memberName;
@@ -1658,14 +1660,11 @@ function renderMemberHome() {
 
   $('member-home-cards').innerHTML = `
     <div class="card gold">
-      <div class="label">今週の担当 ${formatSundayShort(thisWeek)}</div>
+      <div class="label">今週の担当 ${formatWeekRange(thisWeek)}</div>
       <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
     </div>
-    <div class="card purple">
-      <div class="label">今後の担当件数</div>
-      <div class="value">${upcoming.length}件</div>
-    </div>
   `;
+  $('member-home-upcoming-count').textContent = `${upcoming.length}件`;
 
   $('member-home-table-body').innerHTML = upcoming.length
     ? upcoming.map(a => `<tr><td class="date-cell">${formatSundayShort(a.week)}</td><td>${escapeHtml(assignmentDisplayLabel(a))}</td><td>${slotMark(a.slotNo)}</td></tr>`).join('')

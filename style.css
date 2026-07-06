@@ -304,6 +304,20 @@ button:disabled {
 .card .label { font-size: 0.8rem; color: var(--color-text-muted); }
 .card .value { font-size: 1.6rem; font-weight: bold; margin-top: 6px; }
 
+.section-heading-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.count-badge {
+  font-size: 0.8rem;
+  font-weight: bold;
+  background: var(--color-purple);
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
 /* --- フォーム・テーブル --- */
 .inline-form {
   display: flex;
