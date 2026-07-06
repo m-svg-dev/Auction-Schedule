@@ -986,10 +986,33 @@ function renderWishlistList() {
     li.draggable = true;
     li.dataset.id = w.id;
     const wLabel = w.auctionName ? `【${w.auctionName}】${w.itemName}` : w.itemName;
-    // itemId のない旧データかつ同名アイテムが複数ある場合は判別不能 → 再登録を促す
     const isAmbiguous = !w.itemId && guild.items.filter(it => it.itemName === w.itemName).length > 1;
     const badge = isAmbiguous ? '<span class="badge-reregister">⚠ 削除して再登録</span>' : '';
     li.innerHTML = `<span><span class="order-no">${i + 1}.</span>${escapeHtml(wLabel)}${badge}</span>`;
+
+    const moveUp = document.createElement('button');
+    moveUp.className = 'btn-move';
+    moveUp.textContent = '↑';
+    moveUp.disabled = i === 0;
+    moveUp.addEventListener('click', () => withBusyAction(moveUp, async () => {
+      const ids = wishlist.map(ww => ww.id);
+      ids.splice(i - 1, 0, ids.splice(i, 1)[0]);
+      await store.reorderWishlist(session.guildName, selectedWishlistMember, ids);
+      await refreshGuild();
+      renderWishlistList();
+    }));
+
+    const moveDown = document.createElement('button');
+    moveDown.className = 'btn-move';
+    moveDown.textContent = '↓';
+    moveDown.disabled = i === wishlist.length - 1;
+    moveDown.addEventListener('click', () => withBusyAction(moveDown, async () => {
+      const ids = wishlist.map(ww => ww.id);
+      ids.splice(i + 1, 0, ids.splice(i, 1)[0]);
+      await store.reorderWishlist(session.guildName, selectedWishlistMember, ids);
+      await refreshGuild();
+      renderWishlistList();
+    }));
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
@@ -999,6 +1022,9 @@ function renderWishlistList() {
       await refreshGuild();
       renderWishlistList();
     }));
+
+    li.appendChild(moveUp);
+    li.appendChild(moveDown);
     li.appendChild(delBtn);
 
     li.addEventListener('dragstart', () => { wishlistDragSourceId = w.id; li.classList.add('dragging'); });
