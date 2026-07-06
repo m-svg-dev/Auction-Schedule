@@ -608,6 +608,64 @@ button:disabled {
 .req-status-badge.approved { background: #e8f5e9; color: #2e7d32; }
 .req-status-badge.rejected { background: #fce4ec; color: #c62828; }
 
+.req-auction-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8eaf6;
+  color: #3949ab;
+}
+.req-auction-badge.all {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.auction-picker-container {
+  margin: 10px 0;
+}
+.auction-picker-label {
+  font-size: 0.88rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: var(--color-text);
+}
+.auction-picker-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.auction-check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background 0.12s, border-color 0.12s;
+  background: #fff;
+}
+.auction-check-item:hover:not(.disabled) {
+  background: #e8eaf6;
+  border-color: #3949ab;
+}
+.auction-check-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.auction-check-item input[type="checkbox"] {
+  accent-color: var(--color-purple);
+}
+.auction-schedule-hint {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  margin-left: 2px;
+}
+
 .btn-approve {
   background: #2e7d32;
   color: #fff;

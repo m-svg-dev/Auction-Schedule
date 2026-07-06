@@ -675,14 +675,23 @@ $('form-add-member').addEventListener('submit', e => {
 
 // --- 管理者：開催オークション管理 ---
 
+const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+function auctionScheduleLabel(ae) {
+  if (ae.dayOfWeek == null && !ae.time) return '';
+  const day = ae.dayOfWeek != null ? `${DAY_NAMES[ae.dayOfWeek]}曜` : '';
+  return [day, ae.time].filter(Boolean).join(' ');
+}
+
 function renderAuctionManagement() {
   const guild = currentGuild;
   const auctions = guild.auctionEvents || [];
   $('auction-table-body').innerHTML = auctions.length === 0
-    ? '<tr><td colspan="2"><p class="empty-state">まだ登録されていません。</p></td></tr>'
+    ? '<tr><td colspan="3"><p class="empty-state">まだ登録されていません。</p></td></tr>'
     : auctions.map(ae => `
         <tr>
           <td>${escapeHtml(ae.name)}</td>
+          <td>${escapeHtml(auctionScheduleLabel(ae))}</td>
           <td><button class="btn-danger" data-del-auction="${escapeHtml(ae.id)}">削除</button></td>
         </tr>`).join('');
   $('auction-table-body').querySelectorAll('[data-del-auction]').forEach(btn => {
@@ -699,8 +708,12 @@ $('form-add-auction').addEventListener('submit', e => {
   withBusyButton(e.target, async () => {
     const name = $('new-auction-name').value.trim();
     if (!name) return;
-    await store.addAuctionEvent(session.guildName, name);
+    const dayOfWeek = $('new-auction-day').value !== '' ? Number($('new-auction-day').value) : null;
+    const time = $('new-auction-time').value || null;
+    await store.addAuctionEvent(session.guildName, name, dayOfWeek, time);
     $('new-auction-name').value = '';
+    $('new-auction-day').value = '';
+    $('new-auction-time').value = '';
     await refreshGuild();
     renderAuctionManagement();
   });
@@ -1002,24 +1015,30 @@ function renderRequestManagement() {
   } else {
     html += pending.map(u => {
       const assignment = assignmentMap.get(`${u.week}|${u.memberName}`) || [];
-      const hasConfirmed = assignment.some(a => a.confirmed === true);
-      const hasUnconfirmed = assignment.some(a => a.confirmed !== true);
+      // オークション指定がある場合はそのオークションの担当のみ対象
+      const targetAssignments = u.auctionName
+        ? assignment.filter(a => (a.auctionName !== undefined ? (a.auctionName || null) : null) === u.auctionName)
+        : assignment;
+      const hasConfirmed = targetAssignments.some(a => a.confirmed === true);
+      const hasUnconfirmed = targetAssignments.some(a => a.confirmed !== true);
       const assignmentInfo = hasConfirmed
-        ? `<div class="req-assignment-warn req-assignment-confirmed">⚠ 落札確認済みの担当あり: ${assignment.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('・')} → 承認しても確認済み記録は変更されません。カレンダーから手動で変更してください。</div>`
+        ? `<div class="req-assignment-warn req-assignment-confirmed">⚠ 落札確認済みの担当あり: ${targetAssignments.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('・')} → 承認しても確認済み記録は変更されません。カレンダーから手動で変更してください。</div>`
         : hasUnconfirmed
-          ? `<div class="req-assignment-warn">⚠ 担当あり: ${assignment.map(a => `${escapeHtml(a.itemName)}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
+          ? `<div class="req-assignment-warn">⚠ 担当あり: ${targetAssignments.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
           : '<div class="req-assignment-ok">担当なし（割当取消は不要）</div>';
+      const auctionLabel = u.auctionName ? `<span class="req-auction-badge">${escapeHtml(u.auctionName)}</span>` : '<span class="req-auction-badge all">全オークション</span>';
       return `
         <div class="req-card pending-card">
           <div class="req-header">
             <span class="req-member">${escapeHtml(u.memberName)}</span>
             <span class="req-date">${formatSundayShort(u.week)}</span>
+            ${auctionLabel}
             <span class="req-status-badge pending">申請中</span>
           </div>
           ${u.reason ? `<div class="req-reason">理由: ${escapeHtml(u.reason)}</div>` : ''}
           ${assignmentInfo}
           <div class="req-actions">
-            <button class="btn-approve" data-id="${escapeHtml(u.id)}" data-member="${escapeHtml(u.memberName)}" data-week="${escapeHtml(u.week)}" data-has-assign="${hasUnconfirmed}">承認${hasUnconfirmed ? '・割当取消' : ''}</button>
+            <button class="btn-approve" data-id="${escapeHtml(u.id)}" data-member="${escapeHtml(u.memberName)}" data-week="${escapeHtml(u.week)}" data-auction-name="${escapeHtml(u.auctionName || '')}" data-has-assign="${hasUnconfirmed}">承認${hasUnconfirmed ? '・割当取消' : ''}</button>
             <button class="btn-reject" data-id="${escapeHtml(u.id)}">拒否</button>
           </div>
         </div>`;
@@ -1036,6 +1055,7 @@ function renderRequestManagement() {
         <div class="req-header">
           <span class="req-member">${escapeHtml(u.memberName)}</span>
           <span class="req-date">${formatSundayShort(u.week)}</span>
+          ${u.auctionName ? `<span class="req-auction-badge">${escapeHtml(u.auctionName)}</span>` : ''}
           <span class="req-status-badge ${u.status === 'approved' ? 'approved' : 'rejected'}">${u.status === 'approved' ? '✓ 承認済み' : '✗ 拒否済み'}</span>
         </div>
         ${u.reason ? `<div class="req-reason">理由: ${escapeHtml(u.reason)}</div>` : ''}
@@ -1049,7 +1069,8 @@ function renderRequestManagement() {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       // approveとassignment cancel をアトミックに1回のFirestore書き込みで実行
       await store.approveRequestAndCancelAssignment(
-        session.guildName, btn.dataset.id, btn.dataset.member, btn.dataset.week
+        session.guildName, btn.dataset.id, btn.dataset.member, btn.dataset.week,
+        btn.dataset.auctionName || null
       );
       await refreshGuild();
       renderRequestManagement();
@@ -1601,24 +1622,29 @@ function renderMemberHome() {
 function renderMemberUnavailableRequest() {
   const guild = currentGuild;
   populateSundaySelect('member-unavailable-week', $('member-unavailable-week').value, 0, 12);
+  renderAuctionPicker($('member-unavailable-week').value);
   checkUnavailConflict($('member-unavailable-week').value);
 
   const mine = guild.unavailableWeeks
     .filter(u => u.memberName === session.memberName)
-    .sort((a, b) => a.week.localeCompare(b.week));
+    .sort((a, b) => a.week.localeCompare(b.week) || (a.auctionName || '').localeCompare(b.auctionName || ''));
   $('member-unavailable-table-body').innerHTML = mine.length
     ? mine.map(u => {
         const badge = u.status === 'approved' ? '<span class="req-status-badge approved">承認</span>'
           : u.status === 'rejected' ? '<span class="req-status-badge rejected">拒否</span>'
           : '<span class="req-status-badge pending">申請中</span>';
+        const auctionCell = u.auctionName
+          ? `<span class="req-auction-badge">${escapeHtml(u.auctionName)}</span>`
+          : '<span class="req-auction-badge all">全て</span>';
         return `<tr>
           <td class="date-cell">${formatSundayShort(u.week)}</td>
+          <td>${auctionCell}</td>
           <td>${escapeHtml(u.reason) || '-'}</td>
           <td>${badge}</td>
           <td>${u.status === 'pending' ? `<button class="btn-danger" data-del-my-unavail="${escapeHtml(u.id)}">取消</button>` : ''}</td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="4">申請はありません</td></tr>';
+    : '<tr><td colspan="5">申請はありません</td></tr>';
   $('member-unavailable-table-body').querySelectorAll('[data-del-my-unavail]').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       await store.removeUnavailable(session.guildName, btn.dataset.delMyUnavail);
@@ -1628,21 +1654,52 @@ function renderMemberUnavailableRequest() {
   });
 }
 
+function renderAuctionPicker(week) {
+  const container = $('member-unavail-auction-picker');
+  const auctions = currentGuild.auctionEvents || [];
+  if (auctions.length === 0) { container.innerHTML = ''; return; }
+
+  // すでにこの週・このメンバーが申請済みのオークションは無効化
+  const alreadyRequested = new Set(
+    currentGuild.unavailableWeeks
+      .filter(u => u.week === week && u.memberName === session.memberName && u.status !== 'rejected')
+      .map(u => u.auctionEventId || '__all__')
+  );
+
+  container.innerHTML = `
+    <div class="auction-picker-label">参加できないオークションを選択（複数可）</div>
+    <div class="auction-picker-checks">
+      ${auctions.map(ae => {
+        const schedule = auctionScheduleLabel(ae);
+        const disabled = alreadyRequested.has(ae.id) || alreadyRequested.has('__all__') ? 'disabled' : '';
+        return `<label class="auction-check-item ${disabled ? 'disabled' : ''}">
+          <input type="checkbox" name="unavail-auction" value="${escapeHtml(ae.id)}" data-name="${escapeHtml(ae.name)}" ${disabled}>
+          <span>${escapeHtml(ae.name)}${schedule ? `<small class="auction-schedule-hint">（${escapeHtml(schedule)}）</small>` : ''}</span>
+        </label>`;
+      }).join('')}
+    </div>
+    <p class="hint">未選択の場合は全オークション対象として申請されます。</p>`;
+}
+
 function checkUnavailConflict(week) {
   const warning = $('unavail-conflict-warning');
   if (!week) { warning.classList.add('hidden'); return; }
-  const hasAssignment = currentGuild.assignments.some(
+  const myAssignments = currentGuild.assignments.filter(
     a => a.week === week && a.memberName === session.memberName
   );
-  if (hasAssignment) {
-    warning.textContent = `⚠ ${formatSundayShort(week)} はすでに担当に割り当てられています。連絡後、管理者が「申請管理」で承認すると担当から外されます。`;
+  if (myAssignments.length > 0) {
+    const labels = [...new Set(myAssignments.map(a => assignmentDisplayLabel(a)))].join('・');
+    warning.textContent = `⚠ ${formatSundayShort(week)} は ${labels} の担当に割り当てられています。連絡後、管理者が承認すると担当から外されます。`;
     warning.classList.remove('hidden');
   } else {
     warning.classList.add('hidden');
   }
 }
 
-$('member-unavailable-week').addEventListener('change', e => checkUnavailConflict(e.target.value));
+$('member-unavailable-week').addEventListener('change', e => {
+  renderAuctionPicker(e.target.value);
+  checkUnavailConflict(e.target.value);
+});
 
 $('form-member-unavailable').addEventListener('submit', e => {
   e.preventDefault();
@@ -1650,7 +1707,9 @@ $('form-member-unavailable').addEventListener('submit', e => {
     const week = $('member-unavailable-week').value;
     const reason = $('member-unavailable-reason').value.trim();
     if (!week) return;
-    await store.addUnavailableRequest(session.guildName, session.memberName, week, reason);
+    const checked = [...document.querySelectorAll('input[name="unavail-auction"]:checked')];
+    const auctionSelections = checked.map(cb => ({ auctionEventId: cb.value, auctionName: cb.dataset.name }));
+    await store.addUnavailableRequest(session.guildName, session.memberName, week, reason, auctionSelections);
     $('member-unavailable-reason').value = '';
     await refreshGuild();
     renderMemberUnavailableRequest();

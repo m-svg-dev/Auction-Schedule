@@ -94,10 +94,21 @@
       <p class="hint">オークションの種類を登録します。アイテム追加時に分類として選べます（例：武器、防具など）。</p>
       <form id="form-add-auction" class="inline-form">
         <input type="text" id="new-auction-name" placeholder="オークション名" required>
+        <select id="new-auction-day">
+          <option value="">曜日（任意）</option>
+          <option value="0">日曜日</option>
+          <option value="1">月曜日</option>
+          <option value="2">火曜日</option>
+          <option value="3">水曜日</option>
+          <option value="4">木曜日</option>
+          <option value="5">金曜日</option>
+          <option value="6">土曜日</option>
+        </select>
+        <input type="time" id="new-auction-time" placeholder="開始時間（任意）">
         <button type="submit" class="btn-primary">追加</button>
       </form>
       <table class="data-table">
-        <thead><tr><th>オークション名</th><th></th></tr></thead>
+        <thead><tr><th>オークション名</th><th>曜日・時間</th><th></th></tr></thead>
         <tbody id="auction-table-body"></tbody>
       </table>
     </section>
@@ -242,13 +253,18 @@
       <h2>欠席連絡</h2>
       <p class="hint">参加できない日曜日を選んで連絡します。管理者が承認すると担当から外されます。</p>
       <div id="unavail-conflict-warning" class="unavail-conflict hidden"></div>
-      <form id="form-member-unavailable" class="inline-form">
-        <label>対象日（日曜日） <select id="member-unavailable-week" required></select></label>
-        <input type="text" id="member-unavailable-reason" placeholder="理由（任意）">
-        <button type="submit" class="btn-primary">申請する</button>
+      <form id="form-member-unavailable">
+        <div class="inline-form">
+          <label>対象日（日曜日） <select id="member-unavailable-week" required></select></label>
+          <input type="text" id="member-unavailable-reason" placeholder="理由（任意）">
+        </div>
+        <div id="member-unavail-auction-picker" class="auction-picker-container"></div>
+        <div class="inline-form">
+          <button type="submit" class="btn-primary">申請する</button>
+        </div>
       </form>
       <table class="data-table">
-        <thead><tr><th>対象日</th><th>理由</th><th>状態</th><th></th></tr></thead>
+        <thead><tr><th>対象日</th><th>対象オークション</th><th>理由</th><th>状態</th><th></th></tr></thead>
         <tbody id="member-unavailable-table-body"></tbody>
       </table>
     </section>

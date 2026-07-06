@@ -12,11 +12,15 @@ export function generateWeekAssignments(guild, week) {
   const items = guild.items;
   const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
   // pending(申請中)・rejected(拒否済み)はスキップしない。approved(承認済み)または旧データのみスキップ。
-  const unavailableSet = new Set(
-    guild.unavailableWeeks
-      .filter(u => u.week === week && (u.status === 'approved' || !u.status))
-      .map(u => u.memberName)
-  );
+  // auctionEventId がある場合はオークション単位で欠席判定、ない場合は全オークション対象
+  const unavailableEntries = guild.unavailableWeeks
+    .filter(u => u.week === week && (u.status === 'approved' || !u.status));
+  function isUnavailable(memberName, itemAuctionName) {
+    return unavailableEntries.some(u =>
+      u.memberName === memberName &&
+      (!u.auctionEventId || u.auctionName === itemAuctionName)
+    );
+  }
 
   // 今週より前の全アイテム合計落札回数を集計（全体公平性のため）
   const totalWins = new Map(guild.members.map(m => [m.name, 0]));
@@ -52,7 +56,7 @@ export function generateWeekAssignments(guild, week) {
         return (memberOrder.get(a.memberName) ?? 0) - (memberOrder.get(b.memberName) ?? 0); // 4. 登録順
       })
       .map(w => w.memberName)
-      .filter(name => !unavailableSet.has(name));
+      .filter(name => !isUnavailable(name, item.auctionName || null));
 
     for (let s = 1; s <= item.slotCount; s++) {
       const assigned = queue[s - 1] ?? null;

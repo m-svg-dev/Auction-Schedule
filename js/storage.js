@@ -146,9 +146,21 @@ export function reorderMembers(guildName, orderedIds) {
 
 // --- auction events ---
 
-export function addAuctionEvent(guildName, name) {
+export function addAuctionEvent(guildName, name, dayOfWeek, time) {
   return updateGuild(guildName, guild => {
-    guild.auctionEvents.push({ id: newId(), name });
+    guild.auctionEvents.push({
+      id: newId(),
+      name,
+      dayOfWeek: dayOfWeek != null ? Number(dayOfWeek) : null,
+      time: time || null,
+    });
+  });
+}
+
+export function updateAuctionEvent(guildName, eventId, fields) {
+  return updateGuild(guildName, guild => {
+    const ae = guild.auctionEvents.find(e => e.id === eventId);
+    if (ae) Object.assign(ae, fields);
   });
 }
 
@@ -236,9 +248,18 @@ export function addUnavailable(guildName, memberName, week, reason) {
 }
 
 // メンバーが申請（管理者の承認待ち）
-export function addUnavailableRequest(guildName, memberName, week, reason) {
+// auctionSelections = [{ auctionEventId, auctionName }] の場合はオークション別に登録
+// 空配列または省略の場合は全オークション対象
+export function addUnavailableRequest(guildName, memberName, week, reason, auctionSelections) {
   return updateGuild(guildName, guild => {
-    guild.unavailableWeeks.push({ id: newId(), memberName, week, reason: reason || '', status: 'pending', memberRequest: true });
+    const base = { memberName, week, reason: reason || '', status: 'pending', memberRequest: true };
+    if (!auctionSelections || auctionSelections.length === 0) {
+      guild.unavailableWeeks.push({ id: newId(), ...base });
+    } else {
+      auctionSelections.forEach(({ auctionEventId, auctionName }) => {
+        guild.unavailableWeeks.push({ id: newId(), ...base, auctionEventId, auctionName });
+      });
+    }
   });
 }
 
@@ -250,12 +271,18 @@ export function approveRequest(guildName, unavailId) {
 }
 
 // approveRequest + cancelMemberAssignment を1回の Firestore 書き込みでアトミックに実行
-export function approveRequestAndCancelAssignment(guildName, unavailId, memberName, week) {
+// auctionName が指定されている場合はそのオークションの担当のみ取消
+export function approveRequestAndCancelAssignment(guildName, unavailId, memberName, week, auctionName) {
   return updateGuild(guildName, guild => {
     const u = guild.unavailableWeeks.find(w => w.id === unavailId);
     if (u) { u.status = 'approved'; u.reviewedAt = new Date().toISOString(); }
     guild.assignments
-      .filter(a => a.week === week && a.memberName === memberName && a.confirmed !== true)
+      .filter(a => {
+        if (a.week !== week || a.memberName !== memberName || a.confirmed === true) return false;
+        if (!auctionName) return true; // 全オークション対象
+        const aAuction = a.auctionName !== undefined ? (a.auctionName || null) : null;
+        return aAuction === auctionName;
+      })
       .forEach(a => { a.memberName = null; a.confirmed = false; });
   });
 }
