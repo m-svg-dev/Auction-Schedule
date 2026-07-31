@@ -906,6 +906,29 @@ function groupAssignmentsByAuction(assignments) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ a, idx });
   });
+  // グループ内をアイテム登録順→枠番号で整列する。
+  // 枠数を後から増やすと assignments の配列順では ⑤⑥ が他アイテムの後ろに離れてしまうため。
+  // idx は元の配列位置を保持しているので、並べ替えても保存処理には影響しない。
+  const itemOrder = new Map();
+  (currentGuild.items || []).forEach((it, i) => {
+    const k = `${it.auctionName || ''}|${it.itemName}`;
+    if (!itemOrder.has(k)) itemOrder.set(k, i);
+  });
+  const itemPos = a => {
+    const auctionName = a.auctionName !== undefined
+      ? (a.auctionName || '')
+      : (currentGuild.items.find(it => it.itemName === a.itemName)?.auctionName || '');
+    // 削除済みアイテムの古いスロットは末尾に寄せる
+    return itemOrder.get(`${auctionName}|${a.itemName}`) ?? Number.MAX_SAFE_INTEGER;
+  };
+  groups.forEach(rows => {
+    rows.sort((x, y) =>
+      itemPos(x.a) - itemPos(y.a)
+      || x.a.itemName.localeCompare(y.a.itemName, 'ja')
+      || (x.a.slotNo || 0) - (y.a.slotNo || 0)
+    );
+  });
+
   const result = [];
   auctionOrder.forEach(name => { if (groups.has(name)) result.push({ auctionName: name, rows: groups.get(name) }); });
   // auctionEvents に存在しない名前（削除済みイベントの旧データなど）も安全に表示
