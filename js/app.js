@@ -393,6 +393,12 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
     </div>`;
 }
 
+// 落札者の確定値。（未割当）を選んだときは空文字なので null にする。
+// select が無い行（確認済み）だけ既存の担当を維持する。
+function confirmedWinnerName(sel, a) {
+  return sel ? (sel.value || null) : a.memberName;
+}
+
 function bindAuctionSectionEvents(week, assignments) {
   const section = document.querySelector(`.auction-section[data-week="${week}"]`);
   if (!section) return;
@@ -413,7 +419,7 @@ function bindAuctionSectionEvents(week, assignments) {
       const idx = +btn.dataset.idx;
       const sel = section.querySelector(`.confirm-select[data-week="${week}"][data-idx="${idx}"]`);
       const updated = assignments.map((a, i) =>
-        i === idx ? { ...a, memberName: sel?.value || a.memberName, confirmed: true } : a
+        i === idx ? { ...a, memberName: confirmedWinnerName(sel, a), confirmed: true } : a
       );
       await store.confirmWeekAssignments(session.guildName, week, updated);
       await refreshGuild();
@@ -426,7 +432,7 @@ function bindAuctionSectionEvents(week, assignments) {
     withBusyAction(e.currentTarget, async () => {
       const updated = assignments.map((a, idx) => {
         const sel = section.querySelector(`.confirm-select[data-week="${week}"][data-idx="${idx}"]`);
-        return { ...a, memberName: sel?.value || a.memberName, confirmed: true };
+        return { ...a, memberName: confirmedWinnerName(sel, a), confirmed: true };
       });
       await store.confirmWeekAssignments(session.guildName, week, updated);
       await refreshGuild();
