@@ -59,12 +59,13 @@ function createEmptyGuild(guildName, passwordHash) {
     itemRotationPointers: {},
     assignments: [],
     auctionEvents: [],
+    winAdjustments: [],
   };
 }
 
 // 旧データ（wishlists 未保存のギルド等）を読んだ際にフィールド欠落で落ちないようにする
 function normalizeGuild(data) {
-  return { wishlists: [], itemRotationPointers: {}, auctionEvents: [], ...data };
+  return { wishlists: [], itemRotationPointers: {}, auctionEvents: [], winAdjustments: [], ...data };
 }
 
 export async function registerGuild(guildName, password) {
@@ -118,6 +119,7 @@ export function updateMemberName(guildName, memberId, name) {
     // unavailableWeeks / wishlists / assignments は memberName で紐付けているため改名を反映する
     guild.unavailableWeeks.forEach(u => { if (u.memberName === oldName) u.memberName = name; });
     guild.wishlists.forEach(w => { if (w.memberName === oldName) w.memberName = name; });
+    (guild.winAdjustments || []).forEach(a => { if (a.memberName === oldName) a.memberName = name; });
     guild.assignments.forEach(a => { if (a.memberName === oldName) a.memberName = name; });
   });
 }
@@ -131,6 +133,7 @@ export function deleteMember(guildName, memberId) {
       .forEach((m, i) => { m.orderNo = i + 1; });
     if (member) {
       guild.wishlists = guild.wishlists.filter(w => w.memberName !== member.name);
+      guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.memberName !== member.name);
     }
   });
 }
@@ -241,6 +244,8 @@ export function deleteItem(guildName, itemId) {
         if (otherSameNameCount > 0) return true;
         return w.itemName !== item.itemName;
       });
+      // 帳尻合わせは itemId 固定なので、アイテム削除でそのまま破棄してよい
+      guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.itemId !== itemId);
     }
   });
 }
@@ -364,6 +369,37 @@ export function reorderWishlist(guildName, memberName, orderedIds) {
     orderedIds.forEach((id, i) => {
       const w = guild.wishlists.find(ww => ww.id === id && ww.memberName === memberName);
       if (w) w.rank = i + 1;
+    });
+  });
+}
+
+// --- 帳尻合わせ（winAdjustments） ---
+// 途中から希望リストに追加した人などで割り当てが偏るとき、管理者が手動で
+// 「割り当て計算上の落札数」を増減させるための補正値。
+// 実際の落札記録（assignments）は一切書き換えないので、実績表示は常に本物のまま。
+// itemId 固定で持つため、アイテム名を変更しても補正は追従する。
+// delta > 0 = その人の順番を後ろに下げる / delta < 0 = 前に上げる
+
+export function getWinAdjustment(guild, itemId, memberName) {
+  if (!guild) return 0;
+  const found = (guild.winAdjustments || []).find(a => a.itemId === itemId && a.memberName === memberName);
+  return found ? found.delta : 0;
+}
+
+// 複数行の変更を1回の書き込みでまとめて保存する（+/- 連打でFirestoreを叩かないため）
+// entries: [{ itemId, memberName, delta }]  delta が 0 のものはレコードごと削除する
+export function setWinAdjustments(guildName, entries) {
+  return updateGuild(guildName, guild => {
+    if (!guild.winAdjustments) guild.winAdjustments = [];
+    entries.forEach(({ itemId, memberName, delta }) => {
+      const idx = guild.winAdjustments.findIndex(a => a.itemId === itemId && a.memberName === memberName);
+      if (delta === 0) {
+        if (idx !== -1) guild.winAdjustments.splice(idx, 1);
+      } else if (idx !== -1) {
+        guild.winAdjustments[idx].delta = delta;
+      } else {
+        guild.winAdjustments.push({ id: newId(), itemId, memberName, delta });
+      }
     });
   });
 }

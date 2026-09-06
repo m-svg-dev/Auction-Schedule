@@ -779,6 +779,10 @@ button:disabled {
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 .item-wins-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 0.85rem;
   font-weight: bold;
   color: var(--color-text);
@@ -1092,3 +1096,54 @@ button:disabled {
   /* ボトムナビを表示 */
   .bottom-nav { display: flex; }
 }
+
+/* 希望アイテム管理に未登録のまま落札実績がある行（登録前の落札・リスト削除後の落札）*/
+.wins-row-nonwisher { background: #fafafa; box-shadow: none; border: 1px dashed var(--color-border); }
+.wins-row-nonwisher .wins-name { color: var(--color-text-muted); }
+.wins-row-nonwisher .wins-bar { background: var(--color-border); }
+.wins-row-nonwisher .wins-count { color: var(--color-text-muted); font-weight: normal; }
+.nonwisher-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 8px;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+/* --- 帳尻合わせ（実効値表示・編集モード）--- */
+/* 大きい数字とバーは実効値（実績＋帳尻合わせ）。実績と補正は下段に小さく添える */
+.wins-col { width: 58px; flex-shrink: 0; text-align: right; line-height: 1.15; }
+.wins-col b { font-size: 0.85rem; color: var(--color-purple); }
+.wins-col small { display: block; font-size: 0.62rem; color: var(--color-text-muted); white-space: nowrap; }
+.adj-up { color: #e8590c; font-weight: bold; }
+.adj-down { color: #1c7ed6; font-weight: bold; }
+
+.wins-edit-btn {
+  font-size: 0.68rem;
+  font-weight: normal;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-purple);
+  background: #fff;
+  color: var(--color-purple);
+  flex-shrink: 0;
+}
+.wins-edit-btn.is-editing { background: var(--color-purple); color: #fff; }
+.wins-edit-hint { margin: 0 0 8px; font-size: 0.7rem; color: var(--color-text-muted); }
+
+.adj-ctl { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; }
+.adj-ctl .adj-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-purple);
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.adj-ctl .adj-btn:active { background: var(--color-bg); }
+.adj-val { min-width: 30px; text-align: center; font-size: 0.82rem; font-weight: bold; color: var(--color-text-muted); }
+.wins-row-editing { padding-top: 4px; padding-bottom: 4px; }

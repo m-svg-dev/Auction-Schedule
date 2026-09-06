@@ -8,6 +8,12 @@
 //
 // ※ 同週内で別アイテムを複数落とした場合も合計にカウントし、
 //    同一週内での多重取りを抑制する。
+// ※ 1・2 の落札回数には管理者が設定した帳尻合わせ（guild.winAdjustments）を加算する。
+//    途中から希望リストに入った人が連続で当たるのを手動で補正するための仕組み。
+// ※ 集計対象は「落札確認済み（confirmed === true）」のみ。
+//    ダッシュボードの「アイテム別落札実績（確認済み）」と母数を揃え、
+//    画面に見えている数字と割り当て計算の数字を一致させるため。
+//    （複数週をまとめて生成するときは app.js 側で生成済み週を確認済み扱いにして積み上げる）
 export function generateWeekAssignments(guild, week) {
   const items = guild.items;
   const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
@@ -22,20 +28,41 @@ export function generateWeekAssignments(guild, week) {
     );
   }
 
+  // 旧データの assignment は auctionName を持たない。その場合は同名アイテムが
+  // 一意なときだけ一致とみなす（別オークション分を誤って数えない）
+  const sameNameCounts = new Map();
+  items.forEach(it => sameNameCounts.set(it.itemName, (sameNameCounts.get(it.itemName) || 0) + 1));
+  function isSameItem(a, item) {
+    if (a.itemName !== item.itemName) return false;
+    if (a.auctionName !== undefined) return (a.auctionName || null) === (item.auctionName || null);
+    return sameNameCounts.get(item.itemName) === 1;
+  }
+
+  const adjustments = guild.winAdjustments || [];
+
   // 今週より前の全アイテム合計落札回数を集計（全体公平性のため）
   const totalWins = new Map(guild.members.map(m => [m.name, 0]));
   guild.assignments
-    .filter(a => a.week < week && a.memberName)
+    .filter(a => a.week < week && a.memberName && a.confirmed === true)
     .forEach(a => totalWins.set(a.memberName, (totalWins.get(a.memberName) || 0) + 1));
+  // アイテム別の帳尻合わせは全体合計にも効かせる（1で下げた人が2で先頭に戻らないように）
+  adjustments.forEach(adj => {
+    if (totalWins.has(adj.memberName)) totalWins.set(adj.memberName, totalWins.get(adj.memberName) + adj.delta);
+  });
 
   const result = [];
 
   for (const item of items) {
     // このアイテム固有の落札回数を集計（連続取得を防ぐ最重要指標）
     const itemWins = new Map();
+    // 同名アイテムが別オークションにもある場合に落札数が合算されないよう、
+    // auctionName + itemName の複合キーで判定する（ダッシュボード側と同じキー）
     guild.assignments
-      .filter(a => a.week < week && a.itemName === item.itemName && a.memberName)
+      .filter(a => a.week < week && a.memberName && a.confirmed === true && isSameItem(a, item))
       .forEach(a => itemWins.set(a.memberName, (itemWins.get(a.memberName) || 0) + 1));
+    adjustments
+      .filter(adj => adj.itemId === item.id)
+      .forEach(adj => itemWins.set(adj.memberName, (itemWins.get(adj.memberName) || 0) + adj.delta));
 
     const queue = guild.wishlists
       // 新データは itemId で、旧データは itemName でマッチ
