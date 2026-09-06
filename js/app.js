@@ -295,6 +295,8 @@ async function enterApp() {
 }
 
 async function navigateTo(viewId) {
+  // 帳尻合わせのデバウンス待ちが残っていると refreshGuild で消えるため、先に保存する
+  await flushWinAdjustments();
   document.querySelectorAll('#sidebar-nav .nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
   });
@@ -351,6 +353,19 @@ function memberOptions(members, itemName, selectedName, auctionName) {
 }
 
 const WISH_LEGEND = '<p class="wish-legend"><span class="wish-star">★</span> このアイテムを希望しているメンバー</p>';
+const NONWISHER_LEGEND = '<p class="wish-legend"><span class="nonwisher-swatch"></span> 希望アイテム管理に未登録のメンバー（登録前・削除後の落札）</p>';
+
+// そのアイテムを希望リストに登録しているメンバー名の集合。
+// 新データは itemId、旧データは itemName でマッチする（同名アイテムが複数ある場合は
+// どちらの希望か判別できないため旧データは対象外にする＝rotation.js と同じ判定）。
+function getWisherNames(guild, item) {
+  const sameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
+  return new Set(
+    guild.wishlists
+      .filter(w => (w.itemId ? w.itemId === item.id : sameNameCount === 1 && w.itemName === item.itemName))
+      .map(w => w.memberName)
+  );
+}
 
 function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
   const allConfirmed = assignments.every(a => a.confirmed);
@@ -539,31 +554,186 @@ function renderAdminDashboard() {
   auctionOrder.forEach(name => { if (winsGroups.has(name)) orderedWinsGroups.push({ auctionName: name, items: winsGroups.get(name) }); });
   if (winsGroups.has(null)) orderedWinsGroups.push({ auctionName: null, items: winsGroups.get(null) });
 
+  // 希望未登録なのに落札実績がある人が1人でもいる場合だけ凡例を出す
+  const hasNonWisher = guild.items.some(it => {
+    const winsForItem = itemWins[`${it.auctionName || ''}|${it.itemName}`] || {};
+    const wisherNames = getWisherNames(guild, it);
+    return members.some(m => (winsForItem[m.name] || 0) > 0 && !wisherNames.has(m.name));
+  });
+
+  // 表示・並び順は「実効値（実績＋帳尻合わせ）」を軸にする。
+  // 実効値が少ない人ほど次に割り当てられるので、昇順に並べると上から順に次の候補になる。
+  const memberIndex = new Map(members.map((m, i) => [m.name, i]));
+  function buildWinsRows(it) {
+    const winsForItem = itemWins[`${it.auctionName || ''}|${it.itemName}`] || {};
+    const wisherNames = getWisherNames(guild, it);
+    const editing = winsEditItemIds.has(it.id);
+    return members
+      .map(m => {
+        const count = winsForItem[m.name] || 0;
+        const delta = store.getWinAdjustment(guild, it.id, m.name);
+        // グレー表示は「落札実績があるのに希望未登録」の人だけ。編集モードでは実績0の
+        // メンバーも一覧に出るので、そこまでグレーにすると凡例の説明と食い違う。
+        return {
+          name: m.name,
+          count,
+          delta,
+          total: count + delta,
+          flagNonWisher: count > 0 && !wisherNames.has(m.name),
+        };
+      })
+      // 編集中は補正を掛ける相手を選べるよう全員出す。通常は実績か補正がある人だけ。
+      .filter(r => editing || r.count > 0 || r.delta !== 0)
+      .sort((a, b) => a.total - b.total || memberIndex.get(a.name) - memberIndex.get(b.name));
+  }
+
   $('dashboard-wins').innerHTML = guild.items.length === 0 ? '' : `
     <h3 class="dashboard-wins-title">アイテム別落札実績（確認済み）</h3>
+    ${hasNonWisher ? NONWISHER_LEGEND : ''}
     ${orderedWinsGroups.map(({ auctionName, items }) => `
       ${auctionName ? `<div class="auction-group-header">${escapeHtml(auctionName)}</div>` : ''}
       ${items.map(it => {
-        const key = `${it.auctionName || ''}|${it.itemName}`;
-        const winsForItem = itemWins[key] || {};
-        const rows = members
-          .map(m => ({ name: m.name, count: winsForItem[m.name] || 0 }))
-          .filter(r => r.count > 0);
-        const maxW = Math.max(0, ...rows.map(r => r.count));
+        const editing = winsEditItemIds.has(it.id);
+        const rows = buildWinsRows(it);
+        const maxTotal = winsBarMax(rows);
         return `
           <div class="item-wins-block">
-            <div class="item-wins-header">${escapeHtml(it.itemName)}</div>
+            <div class="item-wins-header">
+              <span>${escapeHtml(it.itemName)}</span>
+              <button class="wins-edit-btn${editing ? ' is-editing' : ''}" data-edit-wins="${escapeHtml(it.id)}">${editing ? '完了' : '帳尻合わせ'}</button>
+            </div>
+            ${editing ? '<p class="wins-edit-hint">＋＝順番を後ろに下げる ／ −＝前に上げる（実績は変わりません）</p>' : ''}
             ${rows.length === 0
               ? '<div class="item-wins-empty">まだ落札記録なし</div>'
-              : rows.map(r => `
-                <div class="wins-row">
-                  <span class="wins-name">${escapeHtml(r.name)}</span>
-                  <div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.round((r.count / maxW) * 100)}%"></div></div>
-                  <span class="wins-count">${r.count}回</span>
-                </div>`).join('')}
+              : rows.map(r => winsRowHTML(it, r, editing, maxTotal)).join('')}
           </div>`;
       }).join('')}
     `).join('')}`;
+
+  bindWinsEvents();
+}
+
+// 実効値がすべて0以下でもバー幅の計算が壊れないよう最低1にする
+function winsBarMax(rows) {
+  return Math.max(1, ...rows.map(r => r.total));
+}
+
+// 帳尻合わせの表示。0のときは符号を出さず「触っていない行」がひと目で分かるようにする
+function deltaLabel(delta) {
+  if (!delta) return '0';
+  return `<span class="${delta > 0 ? 'adj-up' : 'adj-down'}">${delta > 0 ? '+' : '−'}${Math.abs(delta)}</span>`;
+}
+
+function winsRowHTML(item, r, editing, maxTotal) {
+  const attrs = `data-wins-item="${escapeHtml(item.id)}" data-wins-member="${escapeHtml(r.name)}" data-wins-count="${r.count}"`;
+  const middle = editing
+    ? `<span class="adj-ctl">
+         <button class="adj-btn" data-step="-1" aria-label="${escapeHtml(r.name)}の帳尻合わせを1減らす">−</button>
+         <span class="adj-val">${deltaLabel(r.delta)}</span>
+         <button class="adj-btn" data-step="1" aria-label="${escapeHtml(r.name)}の帳尻合わせを1増やす">＋</button>
+       </span>`
+    : `<div class="wins-bar-wrap"><div class="wins-bar" style="width:${Math.max(0, Math.round((r.total / maxTotal) * 100))}%"></div></div>`;
+  const sub = editing
+    ? `実績${r.count}`
+    : (r.delta ? `実績${r.count} ${deltaLabel(r.delta)}` : '&nbsp;');
+  return `
+    <div class="wins-row${r.flagNonWisher ? ' wins-row-nonwisher' : ''}${editing ? ' wins-row-editing' : ''}" ${attrs}${r.flagNonWisher ? ' title="希望アイテム管理に未登録"' : ''}>
+      <span class="wins-name">${escapeHtml(r.name)}</span>
+      ${middle}
+      <span class="wins-col"><b>${r.total}回</b><small>${sub}</small></span>
+    </div>`;
+}
+
+function bindWinsEvents() {
+  $('dashboard-wins').querySelectorAll('[data-edit-wins]').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const itemId = btn.dataset.editWins;
+      if (winsEditItemIds.has(itemId)) {
+        winsEditItemIds.delete(itemId);
+        // 「完了」時はデバウンス待ちを飛ばして確実に保存し、最新データで描き直す
+        await flushWinAdjustments();
+        await refreshGuild();
+      } else {
+        winsEditItemIds.add(itemId);
+      }
+      renderAdminDashboard();
+    }));
+  });
+
+  $('dashboard-wins').querySelectorAll('.adj-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('.wins-row');
+      const itemId = row.dataset.winsItem;
+      const memberName = row.dataset.winsMember;
+      const next = store.getWinAdjustment(currentGuild, itemId, memberName) + Number(btn.dataset.step);
+      applyWinAdjustmentLocally(itemId, memberName, next);
+      // 行の並び替えはここではやらない（押すたびに行が動くと押し間違えるため）。次の描画で反映する。
+      refreshWinsBlockDOM(row.closest('.item-wins-block'));
+      scheduleWinAdjustmentSave();
+    });
+  });
+}
+
+let winsEditItemIds = new Set();
+let winAdjPending = new Map();
+let winAdjTimer = null;
+
+// 保存を待たず画面を更新するため、ローカルの guild を先に書き換える
+function applyWinAdjustmentLocally(itemId, memberName, delta) {
+  if (!currentGuild.winAdjustments) currentGuild.winAdjustments = [];
+  const idx = currentGuild.winAdjustments.findIndex(a => a.itemId === itemId && a.memberName === memberName);
+  if (delta === 0) {
+    if (idx !== -1) currentGuild.winAdjustments.splice(idx, 1);
+  } else if (idx !== -1) {
+    currentGuild.winAdjustments[idx].delta = delta;
+  } else {
+    currentGuild.winAdjustments.push({ id: `local-${Date.now()}`, itemId, memberName, delta });
+  }
+  winAdjPending.set(`${itemId}\u0000${memberName}`, { itemId, memberName, delta });
+}
+
+// 編集中のブロックだけ数値を差し替える（全体を描き直すとスクロール位置が飛ぶため）
+function refreshWinsBlockDOM(block) {
+  block.querySelectorAll('.wins-row').forEach(row => {
+    const delta = store.getWinAdjustment(currentGuild, row.dataset.winsItem, row.dataset.winsMember);
+    row.querySelector('.adj-val').innerHTML = deltaLabel(delta);
+    row.querySelector('.wins-col b').textContent = `${Number(row.dataset.winsCount) + delta}回`;
+  });
+}
+
+// +/- を押すたびに書き込むと updateGuild がドキュメント全体を読み書きして重いので、
+// 手が止まってからまとめて1回だけ保存する
+function scheduleWinAdjustmentSave() {
+  clearTimeout(winAdjTimer);
+  winAdjTimer = setTimeout(flushWinAdjustments, 800);
+}
+
+// 保存は必ず1本の鎖に繋いで直列化する。
+// デバウンス保存が飛んでいる最中に「完了」を押しても、await flushWinAdjustments() が
+// 前の書き込みの完了まで待つので、その後の refreshGuild が古い値を読んで
+// 画面上だけ補正が消える（＝管理者が二重に盛る）事故を防げる。
+let winAdjChain = Promise.resolve();
+
+function flushWinAdjustments() {
+  clearTimeout(winAdjTimer);
+  winAdjChain = winAdjChain.then(runWinAdjustmentSave, runWinAdjustmentSave);
+  return winAdjChain;
+}
+
+async function runWinAdjustmentSave() {
+  if (winAdjPending.size === 0) return;
+  const entries = [...winAdjPending.entries()];
+  winAdjPending = new Map();
+  try {
+    await store.setWinAdjustments(session.guildName, entries.map(([, value]) => value));
+  } catch (err) {
+    // 保存できなかった分を書き戻して次の機会に再送する。書き戻しを待つ間に
+    // 同じ行がさらに操作されていた場合は、新しい値のほうを優先する。
+    entries.forEach(([key, value]) => {
+      if (!winAdjPending.has(key)) winAdjPending.set(key, value);
+    });
+    showToast(err.message || '帳尻合わせの保存に失敗しました。通信状況を確認してもう一度お試しください');
+  }
 }
 
 function slotMark(n) {
@@ -1258,7 +1428,10 @@ function runMultipleWeeksInMemory(guild, startWeek, count) {
     const week = addWeeks(startWeek, i);
     const result = generateWeekAssignments(guildState, week);
     guildState.assignments = guildState.assignments.filter(a => a.week !== week);
-    guildState.assignments.push(...result.assignments);
+    // generateWeekAssignments は確認済みの落札だけを数えるので、このループで生成した週を
+    // そのまま戻すと後続週に積み上がらず、毎週同じ人が選ばれてしまう。
+    // 計算用の控えだけ confirmed: true のコピーを積む（保存するのは元の未確認の方）
+    guildState.assignments.push(...result.assignments.map(a => ({ ...a, confirmed: true })));
     allAssignments.push(...result.assignments);
   }
   return { allAssignments, finalPointers: {} };
