@@ -91,7 +91,7 @@
     <!-- 管理者：開催オークション管理 -->
     <section id="view-auction-management" class="view hidden">
       <h2>開催オークション管理</h2>
-      <p class="hint">オークションの種類を登録します。アイテム追加時に分類として選べます（例：武器、防具など）。</p>
+      <p class="hint">オークションの種類を登録します。アイテム追加時に分類として選べます（例：武器、防具など）。<br>その期間そもそも開催されないときは「休止」。配下のアイテムがまとめて割り当て・落札確認から外れます。「再開」で元に戻ります。</p>
       <form id="form-add-auction" class="inline-form">
         <input type="text" id="new-auction-name" placeholder="オークション名" required>
         <select id="new-auction-day">
@@ -116,7 +116,7 @@
     <!-- 管理者：アイテム管理 -->
     <section id="view-item-management" class="view hidden">
       <h2>オークションアイテム管理</h2>
-      <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。</p>
+      <p class="hint">「枠数」は同じ週に同時に何人へ割り当てるか（例: 2なら毎週2人）。<br>そのアイテムが出なくなったら「休止」。割り当て・落札確認・落札実績から外れます。希望アイテムの登録は残るので、「再開」を押せば元に戻ります。</p>
       <form id="form-add-item" class="inline-form">
         <label>開催オークション <select id="new-item-auction"></select></label>
         <input type="text" id="new-item-name" placeholder="アイテム名" required>

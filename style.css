@@ -1147,3 +1147,20 @@ button:disabled {
 .adj-ctl .adj-btn:active { background: var(--color-bg); }
 .adj-val { min-width: 30px; text-align: center; font-size: 0.82rem; font-weight: bold; color: var(--color-text-muted); }
 .wins-row-editing { padding-top: 4px; padding-bottom: 4px; }
+
+/* --- 休止中アイテム（削除せず割り当て・落札確認から一時的に外した状態）--- */
+.badge-paused {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.item-row-hidden td { color: var(--color-text-muted); background: #fbfbfd; }
+.item-row-hidden .wisher-count { color: var(--color-text-muted); }
+.btn-pause { white-space: nowrap; }

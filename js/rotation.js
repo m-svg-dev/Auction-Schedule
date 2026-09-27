@@ -15,7 +15,14 @@
 //    画面に見えている数字と割り当て計算の数字を一致させるため。
 //    （複数週をまとめて生成するときは app.js 側で生成済み週を確認済み扱いにして積み上げる）
 export function generateWeekAssignments(guild, week) {
-  const items = guild.items;
+  // 休止中のアイテムは割り当てを作らない。
+  // オークションごと休止されている場合は、その配下のアイテムもすべて対象外。
+  const hiddenAuctions = new Set(
+    (guild.auctionEvents || []).filter(ae => ae.hidden).map(ae => ae.name)
+  );
+  const items = guild.items.filter(
+    it => !it.hidden && !(it.auctionName != null && hiddenAuctions.has(it.auctionName))
+  );
   const memberOrder = new Map(guild.members.map(m => [m.name, m.orderNo]));
   // pending(申請中)・rejected(拒否済み)はスキップしない。approved(承認済み)または旧データのみスキップ。
   // auctionEventId がある場合はオークション単位で欠席判定、ない場合は全オークション対象
@@ -30,8 +37,10 @@ export function generateWeekAssignments(guild, week) {
 
   // 旧データの assignment は auctionName を持たない。その場合は同名アイテムが
   // 一意なときだけ一致とみなす（別オークション分を誤って数えない）
+  // 休止中のアイテムも数に入れる。休止中の同名アイテムを見落として
+  // 「同名は一意」と誤判定すると、旧データの落札を別アイテム分まで数えてしまう。
   const sameNameCounts = new Map();
-  items.forEach(it => sameNameCounts.set(it.itemName, (sameNameCounts.get(it.itemName) || 0) + 1));
+  guild.items.forEach(it => sameNameCounts.set(it.itemName, (sameNameCounts.get(it.itemName) || 0) + 1));
   function isSameItem(a, item) {
     if (a.itemName !== item.itemName) return false;
     if (a.auctionName !== undefined) return (a.auctionName || null) === (item.auctionName || null);

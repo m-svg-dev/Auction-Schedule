@@ -156,6 +156,7 @@ export function addAuctionEvent(guildName, name, dayOfWeek, time) {
       name,
       dayOfWeek: dayOfWeek != null ? Number(dayOfWeek) : null,
       time: time || null,
+      hidden: false,
     });
   });
 }
@@ -174,13 +175,40 @@ export function updateAuctionEvent(guildName, eventId, fields) {
   });
 }
 
+// オークションごと休止する。その期間そもそも開催されない場合に使う。
+// 配下のアイテムはすべて休止扱いになる（アイテム側の hidden は触らないので、
+// 再開すればアイテム個別の休止設定はそのまま残る）。
+export function setAuctionHidden(guildName, auctionEventId, hidden) {
+  return updateGuild(guildName, guild => {
+    const ae = guild.auctionEvents.find(e => e.id === auctionEventId);
+    if (!ae) return;
+    ae.hidden = hidden === true;
+    if (!ae.hidden) return;
+    // アイテム休止と同じく、未割当スロットだけ消す。担当者が入った記録は残す。
+    guild.assignments = guild.assignments.filter(a => {
+      if (a.memberName) return true;
+      const auctionName = a.auctionName !== undefined
+        ? (a.auctionName || null)
+        : (guild.items.find(it => it.itemName === a.itemName)?.auctionName ?? null);
+      return auctionName !== ae.name;
+    });
+  });
+}
+
 export function deleteAuctionEvent(guildName, auctionEventId) {
   return updateGuild(guildName, guild => {
     const event = guild.auctionEvents.find(ae => ae.id === auctionEventId);
     guild.auctionEvents = guild.auctionEvents.filter(ae => ae.id !== auctionEventId);
     if (event) {
       // 削除されたオークション名を items / assignments から null に戻す
-      guild.items.forEach(item => { if (item.auctionName === event.name) item.auctionName = null; });
+      guild.items.forEach(item => {
+        if (item.auctionName !== event.name) return;
+        // 休止中のオークションを削除した場合、配下アイテムは「その他」に移るだけなので
+        // そのままだと休止が解けて次の自動割り当てで復活してしまう。
+        // 休止の意図を引き継ぐため、アイテム側の休止フラグに移し替える。
+        if (event.hidden) item.hidden = true;
+        item.auctionName = null;
+      });
       guild.assignments.forEach(a => { if (a.auctionName === event.name) a.auctionName = null; });
     }
   });
@@ -190,7 +218,7 @@ export function deleteAuctionEvent(guildName, auctionEventId) {
 
 export function addItem(guildName, itemName, slotCount, auctionName) {
   return updateGuild(guildName, guild => {
-    guild.items.push({ id: newId(), itemName, slotCount, auctionName: auctionName || null });
+    guild.items.push({ id: newId(), itemName, slotCount, auctionName: auctionName || null, hidden: false });
   });
 }
 
@@ -228,6 +256,28 @@ export function updateItem(guildName, itemId, fields) {
         a.auctionName = newAuctionName;
       });
     }
+  });
+}
+
+// 休止（hidden）: アイテムを消さずに、割り当て・落札確認・落札実績から一時的に外す。
+// ゲーム側でそのアイテムが出なくなったときに使う。再開すれば元通りになる。
+export function setItemHidden(guildName, itemId, hidden) {
+  return updateGuild(guildName, guild => {
+    const item = guild.items.find(i => i.id === itemId);
+    if (!item) return;
+    item.hidden = hidden === true;
+    if (!item.hidden) return;
+    // 休止にした時点で「未割当」のスロットは消す。落札確認の一覧に（未割当）が
+    // 残り続けて毎週つぶす手間が発生するのを防ぐため。
+    // 担当者が入っている記録は実際に起きたことなので触らない（再開すれば戻る）。
+    const key = `${item.auctionName || ''}|${item.itemName}`;
+    guild.assignments = guild.assignments.filter(a => {
+      if (a.memberName) return true;
+      const auctionName = a.auctionName !== undefined
+        ? (a.auctionName || '')
+        : (guild.items.find(it => it.itemName === a.itemName)?.auctionName || '');
+      return `${auctionName}|${a.itemName}` !== key;
+    });
   });
 }
 
@@ -425,9 +475,15 @@ export function applyWeekAssignments(guildName, week, result) {
 // auctionName + itemName の複合キーで同名別オークションを区別する
 export function appendMissingItemsToAssignments(guildName) {
   return updateGuild(guildName, guild => {
-    // 複合キーごとの期待スロット数
+    // 複合キーごとの期待スロット数（休止中は対象外）
+    // アイテム単体の休止だけでなく、オークションごと休止されている場合も枠を作らない。
+    const hiddenAuctions = new Set(
+      (guild.auctionEvents || []).filter(ae => ae.hidden).map(ae => ae.name)
+    );
+    const isPaused = item => item.hidden === true
+      || (item.auctionName != null && hiddenAuctions.has(item.auctionName));
     const expectedByKey = new Map();
-    guild.items.forEach(item => {
+    guild.items.filter(item => !isPaused(item)).forEach(item => {
       const key = `${item.auctionName || ''}|${item.itemName}`;
       const prev = expectedByKey.get(key) || { slots: 0, auctionName: item.auctionName || null, itemName: item.itemName };
       expectedByKey.set(key, { ...prev, slots: prev.slots + item.slotCount });
