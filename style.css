@@ -1164,3 +1164,30 @@ button:disabled {
 .item-row-hidden td { color: var(--color-text-muted); background: #fbfbfd; }
 .item-row-hidden .wisher-count { color: var(--color-text-muted); }
 .btn-pause { white-space: nowrap; }
+
+/* --- 落札実績への手入力（記録に残っていない過去の落札）--- */
+.item-wins-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.wins-add-btn {
+  font-size: 0.68rem;
+  font-weight: normal;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.wins-add-btn.is-editing { background: var(--color-text-muted); border-color: var(--color-text-muted); color: #fff; }
+.wins-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+.wins-add-form label { font-size: 0.72rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 4px; }
+.wins-add-form input[type="number"] { width: 62px; padding: 5px 6px; font-size: 0.82rem; }
+.wins-add-form select { flex: 1 1 120px; min-width: 110px; padding: 5px 6px; font-size: 0.82rem; }

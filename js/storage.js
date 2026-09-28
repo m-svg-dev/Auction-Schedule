@@ -60,12 +60,13 @@ function createEmptyGuild(guildName, passwordHash) {
     assignments: [],
     auctionEvents: [],
     winAdjustments: [],
+    winBaselines: [],
   };
 }
 
 // 旧データ（wishlists 未保存のギルド等）を読んだ際にフィールド欠落で落ちないようにする
 function normalizeGuild(data) {
-  return { wishlists: [], itemRotationPointers: {}, auctionEvents: [], winAdjustments: [], ...data };
+  return { wishlists: [], itemRotationPointers: {}, auctionEvents: [], winAdjustments: [], winBaselines: [], ...data };
 }
 
 export async function registerGuild(guildName, password) {
@@ -120,6 +121,7 @@ export function updateMemberName(guildName, memberId, name) {
     guild.unavailableWeeks.forEach(u => { if (u.memberName === oldName) u.memberName = name; });
     guild.wishlists.forEach(w => { if (w.memberName === oldName) w.memberName = name; });
     (guild.winAdjustments || []).forEach(a => { if (a.memberName === oldName) a.memberName = name; });
+    (guild.winBaselines || []).forEach(b => { if (b.memberName === oldName) b.memberName = name; });
     guild.assignments.forEach(a => { if (a.memberName === oldName) a.memberName = name; });
   });
 }
@@ -134,6 +136,7 @@ export function deleteMember(guildName, memberId) {
     if (member) {
       guild.wishlists = guild.wishlists.filter(w => w.memberName !== member.name);
       guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.memberName !== member.name);
+      guild.winBaselines = (guild.winBaselines || []).filter(b => b.memberName !== member.name);
     }
   });
 }
@@ -294,8 +297,9 @@ export function deleteItem(guildName, itemId) {
         if (otherSameNameCount > 0) return true;
         return w.itemName !== item.itemName;
       });
-      // 帳尻合わせは itemId 固定なので、アイテム削除でそのまま破棄してよい
+      // 帳尻合わせ・手入力の実績は itemId 固定なので、アイテム削除でそのまま破棄してよい
       guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.itemId !== itemId);
+      guild.winBaselines = (guild.winBaselines || []).filter(b => b.itemId !== itemId);
     }
   });
 }
@@ -434,6 +438,44 @@ export function getWinAdjustment(guild, itemId, memberName) {
   if (!guild) return 0;
   const found = (guild.winAdjustments || []).find(a => a.itemId === itemId && a.memberName === memberName);
   return found ? found.delta : 0;
+}
+
+// 手入力の実績（winBaselines）
+// アプリを使い始める前の落札など、assignments に記録が残っていない分を
+// アイテム×メンバーごとに補って持つ。表示上は確認済み記録と合算して「実績」になる。
+// 帳尻合わせ（winAdjustments）とは別に持つので、どちらの数字かが画面で区別できる。
+
+export function getWinBaseline(guild, itemId, memberName) {
+  if (!guild) return 0;
+  const found = (guild.winBaselines || []).find(b => b.itemId === itemId && b.memberName === memberName);
+  return found ? found.count : 0;
+}
+
+// 実績と帳尻合わせをまとめて1回の書き込みで保存する。
+// どちらも0なら行ごと消す（一覧から消えて元の状態に戻る）。
+export function setWinRecord(guildName, itemId, memberName, base, delta) {
+  return updateGuild(guildName, guild => {
+    if (!guild.winBaselines) guild.winBaselines = [];
+    if (!guild.winAdjustments) guild.winAdjustments = [];
+
+    const bIdx = guild.winBaselines.findIndex(b => b.itemId === itemId && b.memberName === memberName);
+    if (!base) {
+      if (bIdx !== -1) guild.winBaselines.splice(bIdx, 1);
+    } else if (bIdx !== -1) {
+      guild.winBaselines[bIdx].count = base;
+    } else {
+      guild.winBaselines.push({ id: newId(), itemId, memberName, count: base });
+    }
+
+    const aIdx = guild.winAdjustments.findIndex(a => a.itemId === itemId && a.memberName === memberName);
+    if (!delta) {
+      if (aIdx !== -1) guild.winAdjustments.splice(aIdx, 1);
+    } else if (aIdx !== -1) {
+      guild.winAdjustments[aIdx].delta = delta;
+    } else {
+      guild.winAdjustments.push({ id: newId(), itemId, memberName, delta });
+    }
+  });
 }
 
 // 複数行の変更を1回の書き込みでまとめて保存する（+/- 連打でFirestoreを叩かないため）
