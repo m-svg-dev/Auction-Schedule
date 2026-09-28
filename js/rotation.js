@@ -48,12 +48,17 @@ export function generateWeekAssignments(guild, week) {
   }
 
   const adjustments = guild.winAdjustments || [];
+  // 手入力の実績。記録に残っていない過去の落札なので、実際の落札と同じ重みで数える
+  const baselines = guild.winBaselines || [];
 
   // 今週より前の全アイテム合計落札回数を集計（全体公平性のため）
   const totalWins = new Map(guild.members.map(m => [m.name, 0]));
   guild.assignments
     .filter(a => a.week < week && a.memberName && a.confirmed === true)
     .forEach(a => totalWins.set(a.memberName, (totalWins.get(a.memberName) || 0) + 1));
+  baselines.forEach(b => {
+    if (totalWins.has(b.memberName)) totalWins.set(b.memberName, totalWins.get(b.memberName) + b.count);
+  });
   // アイテム別の帳尻合わせは全体合計にも効かせる（1で下げた人が2で先頭に戻らないように）
   adjustments.forEach(adj => {
     if (totalWins.has(adj.memberName)) totalWins.set(adj.memberName, totalWins.get(adj.memberName) + adj.delta);
@@ -69,6 +74,9 @@ export function generateWeekAssignments(guild, week) {
     guild.assignments
       .filter(a => a.week < week && a.memberName && a.confirmed === true && isSameItem(a, item))
       .forEach(a => itemWins.set(a.memberName, (itemWins.get(a.memberName) || 0) + 1));
+    baselines
+      .filter(b => b.itemId === item.id)
+      .forEach(b => itemWins.set(b.memberName, (itemWins.get(b.memberName) || 0) + b.count));
     adjustments
       .filter(adj => adj.itemId === item.id)
       .forEach(adj => itemWins.set(adj.memberName, (itemWins.get(adj.memberName) || 0) + adj.delta));

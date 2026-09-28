@@ -640,7 +640,8 @@ function renderAdminDashboard() {
     const editing = winsEditItemIds.has(it.id);
     return members
       .map(m => {
-        const count = winsForItem[m.name] || 0;
+        // 確認済み記録 + 手入力の実績（記録に残っていない過去の落札）
+        const count = (winsForItem[m.name] || 0) + store.getWinBaseline(guild, it.id, m.name);
         const delta = store.getWinAdjustment(guild, it.id, m.name);
         // グレー表示は「落札実績があるのに希望未登録」の人だけ。編集モードでは実績0の
         // メンバーも一覧に出るので、そこまでグレーにすると凡例の説明と食い違う。
@@ -664,14 +665,19 @@ function renderAdminDashboard() {
       ${auctionName ? `<div class="auction-group-header">${escapeHtml(auctionName)}</div>` : ''}
       ${items.map(it => {
         const editing = winsEditItemIds.has(it.id);
+        const adding = winsAddItemId === it.id;
         const rows = buildWinsRows(it);
         const maxTotal = winsBarMax(rows);
         return `
           <div class="item-wins-block">
             <div class="item-wins-header">
               <span>${escapeHtml(it.itemName)}</span>
-              <button class="wins-edit-btn${editing ? ' is-editing' : ''}" data-edit-wins="${escapeHtml(it.id)}">${editing ? '完了' : '帳尻合わせ'}</button>
+              <span class="item-wins-actions">
+                <button class="wins-add-btn${adding ? ' is-editing' : ''}" data-add-wins="${escapeHtml(it.id)}">${adding ? '閉じる' : '追加'}</button>
+                <button class="wins-edit-btn${editing ? ' is-editing' : ''}" data-edit-wins="${escapeHtml(it.id)}">${editing ? '完了' : '帳尻合わせ'}</button>
+              </span>
             </div>
+            ${adding ? winsAddFormHTML(it, members) : ''}
             ${editing ? '<p class="wins-edit-hint">＋＝順番を後ろに下げる ／ −＝前に上げる（実績は変わりません）</p>' : ''}
             ${rows.length === 0
               ? '<div class="item-wins-empty">まだ落札記録なし</div>'
@@ -681,6 +687,22 @@ function renderAdminDashboard() {
     `).join('')}`;
 
   bindWinsEvents();
+}
+
+// 記録に残っていない過去の落札を手で足すための入力欄。
+// メンバーを選ぶと現在の値が入るので、修正・取り消しもここから行える。
+function winsAddFormHTML(item, members) {
+  return `
+    <div class="wins-add-form" data-add-form="${escapeHtml(item.id)}">
+      <select class="wins-add-member">
+        <option value="">メンバーを選択</option>
+        ${members.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}
+      </select>
+      <label>実績 <input type="number" class="wins-add-base" min="0" step="1" value="0"></label>
+      <label>帳尻合わせ <input type="number" class="wins-add-delta" step="1" value="0"></label>
+      <button class="btn-primary btn-sm wins-add-save">追加</button>
+    </div>
+    <p class="wins-edit-hint">アプリに記録が残っていない過去の落札を補う欄です。既に記録がある人を選ぶと、その回数に足されます。<br>両方を0にして「追加」を押すと、手入力した分を取り消せます。</p>`;
 }
 
 // 実効値がすべて0以下でもバー幅の計算が壊れないよう最低1にする
@@ -715,6 +737,45 @@ function winsRowHTML(item, r, editing, maxTotal) {
 }
 
 function bindWinsEvents() {
+  $('dashboard-wins').querySelectorAll('[data-add-wins]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const itemId = btn.dataset.addWins;
+      winsAddItemId = winsAddItemId === itemId ? null : itemId;
+      renderAdminDashboard();
+    });
+  });
+
+  const addForm = $('dashboard-wins').querySelector('[data-add-form]');
+  if (addForm) {
+    const itemId = addForm.dataset.addForm;
+    const sel = addForm.querySelector('.wins-add-member');
+    const baseInput = addForm.querySelector('.wins-add-base');
+    const deltaInput = addForm.querySelector('.wins-add-delta');
+
+    // 既に設定がある人を選んだときは現在値を出す（そのまま直して上書きできる）
+    sel.addEventListener('change', () => {
+      const name = sel.value;
+      baseInput.value = name ? store.getWinBaseline(currentGuild, itemId, name) : 0;
+      deltaInput.value = name ? store.getWinAdjustment(currentGuild, itemId, name) : 0;
+    });
+
+    addForm.querySelector('.wins-add-save').addEventListener('click', e => withBusyAction(e.currentTarget, async () => {
+      const memberName = sel.value;
+      if (!memberName) { showToast('メンバーを選択してください'); return; }
+      const base = Math.max(0, Math.trunc(Number(baseInput.value) || 0));
+      const delta = Math.trunc(Number(deltaInput.value) || 0);
+      // 帳尻合わせのデバウンス保存が残っていると、この書き込みを上書きしてしまう
+      await flushWinAdjustments();
+      await store.setWinRecord(session.guildName, itemId, memberName, base, delta);
+      await refreshGuild();
+      winsAddItemId = null;
+      renderAdminDashboard();
+      showToast(base === 0 && delta === 0
+        ? `${memberName} の手入力分を取り消しました`
+        : `${memberName} を実績${base}回で追加しました`);
+    }));
+  }
+
   $('dashboard-wins').querySelectorAll('[data-edit-wins]').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
       const itemId = btn.dataset.editWins;
@@ -745,6 +806,8 @@ function bindWinsEvents() {
 }
 
 let winsEditItemIds = new Set();
+// 「追加」欄は一度にひとつだけ開く
+let winsAddItemId = null;
 let winAdjPending = new Map();
 let winAdjTimer = null;
 
