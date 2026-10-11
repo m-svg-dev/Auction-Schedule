@@ -107,7 +107,7 @@ async function updateGuild(guildName, updater) {
 export function addMember(guildName, name) {
   return updateGuild(guildName, guild => {
     const maxOrder = guild.members.reduce((max, m) => Math.max(max, m.orderNo), 0);
-    guild.members.push({ id: newId(), name, orderNo: maxOrder + 1 });
+    guild.members.push({ id: newId(), name, orderNo: maxOrder + 1, shortName: '' });
   });
 }
 
@@ -221,7 +221,7 @@ export function deleteAuctionEvent(guildName, auctionEventId) {
 
 export function addItem(guildName, itemName, slotCount, auctionName) {
   return updateGuild(guildName, guild => {
-    guild.items.push({ id: newId(), itemName, slotCount, auctionName: auctionName || null, hidden: false });
+    guild.items.push({ id: newId(), itemName, slotCount, auctionName: auctionName || null, hidden: false, shortName: '' });
   });
 }
 
@@ -301,6 +301,25 @@ export function deleteItem(guildName, itemId) {
       guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.itemId !== itemId);
       guild.winBaselines = (guild.winBaselines || []).filter(b => b.itemId !== itemId);
     }
+  });
+}
+
+// --- メール短縮名 ---
+// オークション連絡メールだけで使う短い名前。空なら正式名をそのまま使う。
+// 画面表示（ダッシュボード・カレンダー等）は常に正式名のまま。
+
+// 画面で編集した分をまとめて1回の書き込みで保存する
+// items / members: { [id]: shortName }
+export function saveShortNames(guildName, items, members) {
+  return updateGuild(guildName, guild => {
+    Object.entries(items || {}).forEach(([id, value]) => {
+      const item = guild.items.find(i => i.id === id);
+      if (item) item.shortName = (value || '').trim();
+    });
+    Object.entries(members || {}).forEach(([id, value]) => {
+      const m = guild.members.find(mm => mm.id === id);
+      if (m) m.shortName = (value || '').trim();
+    });
   });
 }
 

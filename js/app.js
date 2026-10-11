@@ -170,6 +170,7 @@ const ADMIN_NAV = [
   { id: 'auction-management', label: '開催オークション管理' },
   { id: 'item-management', label: 'アイテム管理' },
   { id: 'wishlist-management', label: '希望アイテム管理' },
+  { id: 'mail-name-management', label: 'メール短縮名' },
   { id: 'unavailable-management', label: '欠席管理' },
   { id: 'request-management', label: '申請管理' },
   { id: 'auto-assign', label: '自動割り当て' },
@@ -204,6 +205,7 @@ const ADMIN_SETTINGS_ITEMS = [
   { id: 'auction-management',   label: '開催オークション管理' },
   { id: 'item-management',      label: 'アイテム管理' },
   { id: 'wishlist-management',  label: '希望アイテム管理' },
+  { id: 'mail-name-management', label: 'メール短縮名' },
   { id: 'unavailable-management', label: '欠席管理（直接登録）' },
   { id: 'member-search',        label: 'メンバー検索' },
 ];
@@ -211,7 +213,7 @@ const ADMIN_SETTINGS_ITEMS = [
 // ビューIDからボトムタブのIDを返す
 function getBottomTabForView(viewId) {
   if (session.role !== 'admin') return viewId;
-  const settingsViews = new Set(['member-management','auction-management','item-management','wishlist-management','unavailable-management','member-search']);
+  const settingsViews = new Set(['member-management','auction-management','item-management','wishlist-management','mail-name-management','unavailable-management','member-search']);
   return settingsViews.has(viewId) ? 'settings' : viewId;
 }
 
@@ -245,6 +247,7 @@ const RENDERERS = {
   'auction-management': renderAuctionManagement,
   'item-management': renderItemManagement,
   'wishlist-management': renderWishlistManagement,
+  'mail-name-management': renderMailNameManagement,
   'unavailable-management': renderUnavailableManagement,
   'request-management': renderRequestManagement,
   'auto-assign': renderAutoAssign,
@@ -426,6 +429,24 @@ function withoutHiddenAssignments(guild, list) {
   return list.filter(a => !isPausedAssignment(guild, a, ctx));
 }
 
+// メール文字数の目安。実測で115文字まで入ることを確認した。
+// 本当の上限が116以上の可能性も残るため、警告は余裕を見て110で出す。
+const MAIL_LIMIT = 115;
+const MAIL_WARN = 110;
+
+// メール用の短縮名。未設定なら正式名を使う。画面表示には影響しない。
+function mailItemName(guild, a) {
+  const auctionName = assignmentAuctionName(guild, a);
+  const item = guild.items.find(it =>
+    it.itemName === a.itemName && (it.auctionName || null) === auctionName);
+  return (item && item.shortName || '').trim() || a.itemName;
+}
+
+function mailMemberName(guild, name) {
+  const m = guild.members.find(mm => mm.name === name);
+  return (m && m.shortName || '').trim() || name;
+}
+
 // オークション当日にメンバーへ送るメール文面を組み立てる。
 // 丸数字は「枠」ではなく「アイテム」単位。同じアイテムの複数枠は担当者を並べるだけ。
 // 担当者が決まっていない枠は飛ばし、番号も詰める。
@@ -442,16 +463,17 @@ function buildAuctionMailText(week, auctionName, rows) {
   const byItem = new Map();
   rows.forEach(({ a }) => {
     if (!a.memberName) return;
-    if (!byItem.has(a.itemName)) byItem.set(a.itemName, []);
-    byItem.get(a.itemName).push(a.memberName);
+    // 同じアイテムの枠をまとめるキーは正式名のまま（短縮名が重複しても混ざらない）
+    if (!byItem.has(a.itemName)) byItem.set(a.itemName, { label: mailItemName(currentGuild, a), names: [] });
+    byItem.get(a.itemName).names.push(mailMemberName(currentGuild, a.memberName));
   });
 
   // 見出し = 画面の見出しと同じ「異変 10/11(日)」+ 定型文
   const heading = [auctionName, datePart].filter(Boolean).join(' ');
   const lines = [`${heading}オークション割当の連絡です、敬称略`];
   let n = 0;
-  byItem.forEach((names, itemName) => {
-    lines.push(`${mailMark(++n)}${itemName}：${names.join('、')}`);
+  byItem.forEach(({ label, names }) => {
+    lines.push(`${mailMark(++n)}${label}：${names.join('、')}`);
   });
   return lines.join('\n');
 }
@@ -552,9 +574,11 @@ function bindAuctionSectionEvents(week, assignments) {
       if (!group) return;
       const text = buildAuctionMailText(week, auctionName, group.rows);
       const ok = await copyToClipboard(text);
-      showToast(ok
-        ? `コピーしました（${[...text].length}文字）`
-        : 'コピーできませんでした。お手数ですが手で入力してください');
+      if (!ok) { showToast('コピーできませんでした。お手数ですが手で入力してください'); return; }
+      const len = [...text].length;
+      showToast(len > MAIL_WARN
+        ? `コピーしました（${len}文字）。${MAIL_LIMIT}文字を超えるとメールで切れます。設定＞メール短縮名で短くできます`
+        : `コピーしました（${len}文字）`);
     }));
   });
 
@@ -1357,6 +1381,227 @@ function groupAssignmentsByAuction(assignments) {
   });
   if (groups.has(null)) result.push({ auctionName: null, rows: groups.get(null) });
   return result;
+}
+
+// --- 管理者：メール短縮名 ---
+// 入力中の値はここに持ち、「保存」で一括書き込みする（1行ずつ書くと通信が増えるため）
+let mailNameEdits = { items: {}, members: {} };
+let mailNamePreviewAuction = null;
+
+function mailNameOf(entity, fallback, edits, id) {
+  const edited = edits[id];
+  const value = edited !== undefined ? edited : (entity.shortName || '');
+  return value.trim() || fallback;
+}
+
+function renderMailNameManagement() {
+  const guild = currentGuild;
+  const week = getCurrentWeek();
+  const hiddenAuctions = hiddenAuctionNames(guild);
+  const assignments = store.getAssignmentsForWeek(guild, week);
+
+  // 今週の割り当てに出ているアイテム（短縮名を優先して埋めるべきもの）
+  const usedKeys = new Set(
+    assignments.filter(a => a.memberName).map(a => assignmentItemKey(guild, a))
+  );
+
+  // --- プレビュー（休止中のオークションは連絡不要なので外す）---
+  const groups = groupAssignmentsByAuction(assignments)
+    .filter(g => g.rows.some(({ a }) => a.memberName));
+  if (!groups.some(g => (g.auctionName || null) === mailNamePreviewAuction)) {
+    mailNamePreviewAuction = groups.length ? (groups[0].auctionName || null) : null;
+  }
+
+  const previewEl = $('mail-name-preview');
+  if (groups.length === 0) {
+    previewEl.innerHTML = '<p class="empty-state">今週の割り当てがないため、プレビューは表示できません。</p>';
+  } else {
+    const current = groups.find(g => (g.auctionName || null) === mailNamePreviewAuction) || groups[0];
+    const text = buildMailTextWithEdits(week, current);
+    const len = [...text].length;
+    const cls = len > MAIL_LIMIT ? 'over' : len > MAIL_WARN ? 'warn' : 'ok';
+    const pausedNames = [...hiddenAuctions];
+    previewEl.innerHTML = `
+      <div class="mail-preview">
+        <div class="mail-tabs">
+          ${groups.map(g => {
+            const n = [...buildMailTextWithEdits(week, g)].length;
+            const c = n > MAIL_LIMIT ? 'over' : n > MAIL_WARN ? 'warn' : 'ok';
+            const active = (g.auctionName || null) === (current.auctionName || null);
+            const ae = (guild.auctionEvents || []).find(a => a.name === g.auctionName);
+            return `<button class="mail-tab${active ? ' active' : ''}" data-mail-tab="${escapeHtml(g.auctionName || '')}">
+              <span class="nm">${escapeHtml(g.auctionName || 'その他')}${ae ? ` ${escapeHtml(auctionDateLabelInWeek(ae, week).split(' ')[0])}` : ''}</span>
+              <span class="mail-count ${c}">${n}文字</span>
+            </button>`;
+          }).join('')}
+          ${pausedNames.length ? `<div class="mail-paused-note">休止中のため連絡不要：${pausedNames.map(escapeHtml).join('・')}</div>` : ''}
+        </div>
+        <pre class="mail-preview-body">${escapeHtml(text)}</pre>
+        <p class="mail-limit-note">上限の目安：${MAIL_LIMIT}文字 ／ 警告ライン：${MAIL_WARN}文字</p>
+      </div>`;
+    previewEl.querySelectorAll('[data-mail-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        mailNamePreviewAuction = btn.dataset.mailTab || null;
+        renderMailNameManagement();
+      });
+    });
+  }
+
+  // --- アイテム（オークション別）---
+  const auctionOrder = (guild.auctionEvents || []).map(ae => ae.name);
+  const byAuction = new Map();
+  guild.items.forEach(it => {
+    const k = it.auctionName || null;
+    if (!byAuction.has(k)) byAuction.set(k, []);
+    byAuction.get(k).push(it);
+  });
+  const ordered = [];
+  auctionOrder.forEach(n => { if (byAuction.has(n)) ordered.push({ auctionName: n, items: byAuction.get(n) }); });
+  if (byAuction.has(null)) ordered.push({ auctionName: null, items: byAuction.get(null) });
+
+  $('mail-name-items').innerHTML = `
+    <h3 class="mail-section-title">アイテム</h3>
+    <p class="mail-section-sub">同じ名前でもオークションが違えば別々に設定します。</p>
+    <p class="mail-legend"><span class="mail-dot"></span>今週の割り当てに出ているアイテム</p>
+    ${ordered.map(({ auctionName, items }) => {
+      const auctionPaused = auctionName != null && hiddenAuctions.has(auctionName);
+      return `
+        <div class="auction-group-header${auctionPaused ? ' paused' : ''}">
+          <span>${escapeHtml(auctionName || 'その他')}${auctionPaused ? '<span class="badge-paused">休止中・未開催</span>' : ''}</span>
+        </div>
+        ${items.map(it => {
+          const paused = auctionPaused || it.hidden === true;
+          const used = !paused && usedKeys.has(`${it.auctionName || ''}|${it.itemName}`);
+          const badge = auctionPaused ? 'オークション休止中' : (it.hidden ? '休止中' : '');
+          return mailNameRowHTML('item', it.id, it.itemName, it.shortName, used, paused, badge);
+        }).join('')}`;
+    }).join('')}`;
+
+  const members = [...guild.members].sort((a, b) => a.orderNo - b.orderNo);
+  $('mail-name-members').innerHTML = `
+    <h3 class="mail-section-title">メンバー</h3>
+    <p class="mail-section-sub">全オークション共通です。1回設定すればどこでも効きます。</p>
+    ${members.map(m => mailNameRowHTML('member', m.id, m.name, m.shortName, true, false, '')).join('')}`;
+
+  bindMailNameEvents();
+  updateMailNameSaveBar();
+}
+
+function mailNameRowHTML(kind, id, origName, shortName, used, paused, badge) {
+  const edits = kind === 'item' ? mailNameEdits.items : mailNameEdits.members;
+  const value = edits[id] !== undefined ? edits[id] : (shortName || '');
+  const shown = value.trim() || origName;
+  return `
+    <div class="mail-name-row${value.trim() ? ' filled' : ''}${paused ? ' paused' : ''}" data-kind="${kind}" data-id="${escapeHtml(id)}">
+      <span class="mail-dot${used ? '' : ' off'}"></span>
+      <span class="mail-orig">${escapeHtml(origName)}${badge ? `<span class="badge-paused">${escapeHtml(badge)}</span>` : ''}</span>
+      <span class="mail-arrow">→</span>
+      <input type="text" class="mail-short-input" value="${escapeHtml(value)}" placeholder="${escapeHtml(origName)}" maxlength="20">
+      <span class="mail-len">${[...shown].length}字</span>
+    </div>`;
+}
+
+// 未保存の入力を反映した文面を作る（保存前でもプレビューで確認できるように）
+function buildMailTextWithEdits(week, group) {
+  const guild = currentGuild;
+  const auctionName = group.auctionName || null;
+  const ae = (guild.auctionEvents || []).find(a => a.name === auctionName);
+  const dateLabel = auctionDateLabelInWeek(ae, week);
+  const datePart = dateLabel
+    ? dateLabel.split(' ')[0]
+    : formatSundayShort(week).replace('（', '(').replace('）', ')');
+
+  const byItem = new Map();
+  group.rows.forEach(({ a }) => {
+    if (!a.memberName) return;
+    const item = guild.items.find(it =>
+      it.itemName === a.itemName && (it.auctionName || null) === assignmentAuctionName(guild, a));
+    const label = item
+      ? mailNameOf(item, a.itemName, mailNameEdits.items, item.id)
+      : a.itemName;
+    const m = guild.members.find(mm => mm.name === a.memberName);
+    const who = m
+      ? mailNameOf(m, a.memberName, mailNameEdits.members, m.id)
+      : a.memberName;
+    if (!byItem.has(a.itemName)) byItem.set(a.itemName, { label, names: [] });
+    byItem.get(a.itemName).names.push(who);
+  });
+
+  const heading = [auctionName, datePart].filter(Boolean).join(' ');
+  const lines = [`${heading}オークション割当の連絡です、敬称略`];
+  let n = 0;
+  byItem.forEach(({ label, names }) => {
+    lines.push(`${mailMark(++n)}${label}：${names.join('、')}`);
+  });
+  return lines.join('\n');
+}
+
+function bindMailNameEvents() {
+  document.querySelectorAll('#view-mail-name-management .mail-short-input').forEach(input => {
+    input.addEventListener('input', () => {
+      const row = input.closest('.mail-name-row');
+      const store_ = row.dataset.kind === 'item' ? mailNameEdits.items : mailNameEdits.members;
+      store_[row.dataset.id] = input.value;
+      row.classList.toggle('filled', !!input.value.trim());
+      const orig = row.querySelector('.mail-orig').firstChild.textContent;
+      row.querySelector('.mail-len').textContent = `${[...(input.value.trim() || orig)].length}字`;
+      // プレビューだけ更新する（入力欄を作り直すとカーソルが飛ぶため）
+      refreshMailNamePreview();
+      updateMailNameSaveBar();
+    });
+  });
+}
+
+function refreshMailNamePreview() {
+  const week = getCurrentWeek();
+  const groups = groupAssignmentsByAuction(store.getAssignmentsForWeek(currentGuild, week))
+    .filter(g => g.rows.some(({ a }) => a.memberName));
+  document.querySelectorAll('#view-mail-name-management [data-mail-tab]').forEach(btn => {
+    const g = groups.find(x => (x.auctionName || null) === (btn.dataset.mailTab || null));
+    if (!g) return;
+    const n = [...buildMailTextWithEdits(week, g)].length;
+    const el = btn.querySelector('.mail-count');
+    el.textContent = `${n}文字`;
+    el.className = `mail-count ${n > MAIL_LIMIT ? 'over' : n > MAIL_WARN ? 'warn' : 'ok'}`;
+  });
+  const current = groups.find(g => (g.auctionName || null) === mailNamePreviewAuction) || groups[0];
+  const body = document.querySelector('#view-mail-name-management .mail-preview-body');
+  if (current && body) body.textContent = buildMailTextWithEdits(week, current);
+}
+
+function hasMailNameChanges() {
+  const guild = currentGuild;
+  const changed = (list, edits, key) => Object.entries(edits).some(([id, value]) => {
+    const e = list.find(x => x.id === id);
+    return e && (value || '').trim() !== (e.shortName || '').trim();
+  });
+  return changed(guild.items, mailNameEdits.items) || changed(guild.members, mailNameEdits.members);
+}
+
+function updateMailNameSaveBar() {
+  const bar = $('mail-name-savebar');
+  const dirty = hasMailNameChanges();
+  bar.classList.toggle('hidden', !dirty);
+  if (!dirty) return;
+  if (!bar.hasChildNodes()) {
+    bar.innerHTML = `
+      <span class="mail-save-msg">未保存の変更があります</span>
+      <span class="mail-save-actions">
+        <button class="btn-secondary" id="mail-name-cancel">取消</button>
+        <button class="btn-primary" id="mail-name-save">保存</button>
+      </span>`;
+    bar.querySelector('#mail-name-cancel').addEventListener('click', () => {
+      mailNameEdits = { items: {}, members: {} };
+      renderMailNameManagement();
+    });
+    bar.querySelector('#mail-name-save').addEventListener('click', e => withBusyAction(e.currentTarget, async () => {
+      await store.saveShortNames(session.guildName, mailNameEdits.items, mailNameEdits.members);
+      mailNameEdits = { items: {}, members: {} };
+      await refreshGuild();
+      renderMailNameManagement();
+      showToast('メール短縮名を保存しました');
+    }));
+  }
 }
 
 let selectedWishlistMember = null;
