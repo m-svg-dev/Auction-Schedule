@@ -1191,3 +1191,18 @@ button:disabled {
 .wins-add-form label { font-size: 0.72rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 4px; }
 .wins-add-form input[type="number"] { width: 62px; padding: 5px 6px; font-size: 0.82rem; }
 .wins-add-form select { flex: 1 1 120px; min-width: 110px; padding: 5px 6px; font-size: 0.82rem; }
+
+/* --- メンバーへの連絡文コピー（オークション見出し内）--- */
+.mail-copy-btn {
+  font-size: 0.68rem;
+  font-weight: normal;
+  letter-spacing: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-purple);
+  background: #fff;
+  color: var(--color-purple);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.mail-copy-btn:active { background: var(--color-purple); color: #fff; }

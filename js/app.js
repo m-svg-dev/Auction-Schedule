@@ -426,18 +426,84 @@ function withoutHiddenAssignments(guild, list) {
   return list.filter(a => !isPausedAssignment(guild, a, ctx));
 }
 
+// オークション当日にメンバーへ送るメール文面を組み立てる。
+// 丸数字は「枠」ではなく「アイテム」単位。同じアイテムの複数枠は担当者を並べるだけ。
+// 担当者が決まっていない枠は飛ばし、番号も詰める。
+function buildAuctionMailText(week, auctionName, rows) {
+  const ae = (currentGuild.auctionEvents || []).find(a => a.name === auctionName);
+  const dateLabel = auctionDateLabelInWeek(ae, week);
+  // 画面の見出しと同じ「10/11(日)」。時刻は入れない。
+  // 曜日未設定のオークションは週の日曜を使う（全角括弧を半角に揃える）。
+  const datePart = dateLabel
+    ? dateLabel.split(' ')[0]
+    : formatSundayShort(week).replace('（', '(').replace('）', ')');
+
+  // アイテムごとに担当者をまとめる（並びは画面の一覧と同じ）
+  const byItem = new Map();
+  rows.forEach(({ a }) => {
+    if (!a.memberName) return;
+    if (!byItem.has(a.itemName)) byItem.set(a.itemName, []);
+    byItem.get(a.itemName).push(a.memberName);
+  });
+
+  // 見出し = 画面の見出しと同じ「異変 10/11(日)」+ 定型文
+  const heading = [auctionName, datePart].filter(Boolean).join(' ');
+  const lines = [`${heading}オークション割当の連絡です、敬称略`];
+  let n = 0;
+  byItem.forEach((names, itemName) => {
+    lines.push(`${mailMark(++n)}${itemName}：${names.join('、')}`);
+  });
+  return lines.join('\n');
+}
+
+// アイテム番号。slotMark は枠番号用で⑨までなので、メール用は⑳まで持つ。
+// それを超えたら (21) 形式にする（丸数字と混ざるが、実用上ほぼ起きない）。
+const MAIL_MARKS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+function mailMark(n) {
+  return MAIL_MARKS[n - 1] || `(${n})`;
+}
+
+// navigator.clipboard は iOS の古いSafariや非HTTPSで使えないことがあるため、
+// 失敗したら textarea + execCommand に落とす。
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) { /* フォールバックへ */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (err) {
+    return false;
+  }
+}
+
 function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
   // 休止中アイテムの行は表示しないので、全件確認済みかの判定からも外す
   const allConfirmed = withoutHiddenAssignments(currentGuild, assignments).every(a => a.confirmed);
 
   const groups = groupAssignmentsByAuction(assignments);
-  const showHeaders = groups.length > 1;
   const confirmListHTML = groups.map(({ auctionName, rows }) => {
     const ae = (currentGuild.auctionEvents || []).find(a => a.name === auctionName);
     const dateStr = auctionDateLabelInWeek(ae, week);
-    const header = showHeaders
-      ? `<div class="auction-group-header"><span>${escapeHtml(auctionName || 'その他')}${dateStr ? `<small class="group-date-hint">${escapeHtml(dateStr)}</small>` : ''}</span></div>`
-      : '';
+    // 見出しはコピーボタンの置き場所なので、オークションが1つでも常に出す
+    const hasAssigned = rows.some(({ a }) => a.memberName);
+    const header = `<div class="auction-group-header">
+        <span>${escapeHtml(auctionName || 'その他')}${dateStr ? `<small class="group-date-hint">${escapeHtml(dateStr)}</small>` : ''}</span>
+        ${hasAssigned ? `<button class="mail-copy-btn" data-mail-auction="${escapeHtml(auctionName || '')}" data-mail-week="${escapeHtml(week)}" title="メンバーへの連絡文をコピー">コピー</button>` : ''}
+      </div>`;
     return header + rows.map(({ a, idx }) => a.confirmed
       ? `<div class="confirm-row confirmed">
           <span class="confirm-item">${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}</span>
@@ -477,6 +543,20 @@ function confirmedWinnerName(sel, a) {
 function bindAuctionSectionEvents(week, assignments) {
   const section = document.querySelector(`.auction-section[data-week="${week}"]`);
   if (!section) return;
+
+  section.querySelectorAll('[data-mail-auction]').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const auctionName = btn.dataset.mailAuction || null;
+      const group = groupAssignmentsByAuction(assignments)
+        .find(g => (g.auctionName || null) === auctionName);
+      if (!group) return;
+      const text = buildAuctionMailText(week, auctionName, group.rows);
+      const ok = await copyToClipboard(text);
+      showToast(ok
+        ? `コピーしました（${[...text].length}文字）`
+        : 'コピーできませんでした。お手数ですが手で入力してください');
+    }));
+  });
 
   section.querySelectorAll('.btn-cancel-confirm').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
