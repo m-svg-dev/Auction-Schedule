@@ -1580,12 +1580,10 @@ function hasMailNameChanges() {
 
 function updateMailNameSaveBar() {
   const bar = $('mail-name-savebar');
-  const dirty = hasMailNameChanges();
-  bar.classList.toggle('hidden', !dirty);
-  if (!dirty) return;
+  bar.classList.remove('hidden');
   if (!bar.hasChildNodes()) {
     bar.innerHTML = `
-      <span class="mail-save-msg">未保存の変更があります</span>
+      <span class="mail-save-status"></span>
       <span class="mail-save-actions">
         <button class="btn-secondary" id="mail-name-cancel">取消</button>
         <button class="btn-primary" id="mail-name-save">保存</button>
@@ -1602,6 +1600,27 @@ function updateMailNameSaveBar() {
       showToast('メール短縮名を保存しました');
     }));
   }
+
+  const dirty = hasMailNameChanges();
+  bar.classList.toggle('is-dirty', dirty);
+  bar.querySelector('#mail-name-cancel').disabled = !dirty;
+  bar.querySelector('#mail-name-save').disabled = !dirty;
+
+  // 入力中でも現在の文字数が見えるよう、バーにも出す
+  const week = getCurrentWeek();
+  const groups = groupAssignmentsByAuction(store.getAssignmentsForWeek(currentGuild, week))
+    .filter(g => g.rows.some(({ a }) => a.memberName));
+  const current = groups.find(g => (g.auctionName || null) === mailNamePreviewAuction) || groups[0];
+  const status = bar.querySelector('.mail-save-status');
+  if (!current) {
+    status.innerHTML = dirty ? '未保存の変更があります' : '変更はありません';
+    return;
+  }
+  const n = [...buildMailTextWithEdits(week, current)].length;
+  const cls = n > MAIL_LIMIT ? 'over' : n > MAIL_WARN ? 'warn' : 'ok';
+  status.innerHTML = `
+    <span class="mail-count ${cls}">${escapeHtml(current.auctionName || 'その他')} ${n}文字</span>
+    <span class="mail-save-msg">${dirty ? '未保存の変更があります' : '変更はありません'}</span>`;
 }
 
 let selectedWishlistMember = null;
