@@ -1209,7 +1209,6 @@ button:disabled {
 
 /* --- メール短縮名 画面 --- */
 .mail-preview {
-  position: sticky; top: 0; z-index: 5;
   background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius);
   padding: 10px 12px 12px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
 }
@@ -1260,10 +1259,22 @@ button:disabled {
 .auction-group-header.paused { color: var(--color-text-muted); }
 .auction-group-header.paused::before, .auction-group-header.paused::after { background: var(--color-border); opacity: 1; }
 
+/* #content-area に overflow-x:auto があり position:sticky が効かないため fixed で固定する */
 #mail-name-savebar {
-  position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--color-border);
-  padding: 10px 2px; margin-top: 14px;
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+  background: #fff; border-top: 1px solid var(--color-border);
+  padding: 9px 16px; box-shadow: 0 -2px 10px rgba(0,0,0,.08);
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
 }
+#mail-name-savebar.is-dirty { background: #fff8e1; border-top-color: var(--color-gold); }
+.mail-save-status { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mail-save-msg { font-size: .76rem; color: var(--color-text-muted); }
-.mail-save-actions { display: flex; gap: 8px; }
+.mail-save-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.mail-save-actions button:disabled { opacity: .45; }
+/* 画面下に固定したバーの分だけ、一覧の末尾に余白を足す */
+#view-mail-name-management { padding-bottom: 64px; }
+@media (max-width: 768px) {
+  /* モバイルはボトムナビの上に載せる */
+  #mail-name-savebar { bottom: 62px; }
+  #view-mail-name-management { padding-bottom: 40px; }
+}
