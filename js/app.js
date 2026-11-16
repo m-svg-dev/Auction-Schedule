@@ -1,5 +1,5 @@
 import * as store from './storage.js';
-import { generateWeekAssignments } from './rotation.js';
+import { generateWeekAssignments, rankCandidates } from './rotation.js';
 import { getCurrentWeek, addWeeks, formatWeekRange, formatSunday, formatSundayShort, getMondayOfISOWeek } from './calendar.js';
 
 // XSS対策: ユーザー入力値をinnerHTMLに埋め込む前に必ずこの関数を通す
@@ -336,7 +336,7 @@ function populateSundaySelect(selectId, currentValue, pastWeeks = 2, futureWeeks
 // --- 管理者：ダッシュボード ---
 
 // メンバー選択肢を生成。希望者には ★ を付け、文字色を紫にする（iOS非対応のためテキスト記号も併用）
-function memberOptions(members, itemName, selectedName, auctionName) {
+function memberOptions(members, itemName, selectedName, auctionName, nextName) {
   return members.map(m => {
     const isWisher = currentGuild.wishlists.some(w => {
       if (w.memberName !== m.name) return false;
@@ -350,7 +350,7 @@ function memberOptions(members, itemName, selectedName, auctionName) {
       return w.itemName === itemName;
     });
     // 休止中でも、たまたま落札することはあるので選べるようにしておく
-    const suffix = m.hidden ? '（休止中）' : '';
+    const suffix = (m.hidden ? '（休止中）' : '') + (nextName && m.name === nextName ? '（次点）' : '');
     const label = (isWisher ? `★ ${escapeHtml(m.name)}` : escapeHtml(m.name)) + suffix;
     const style = isWisher && !m.hidden ? ' style="color:#7c4dff;font-weight:bold"' : '';
     return `<option value="${escapeHtml(m.name)}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
@@ -358,6 +358,7 @@ function memberOptions(members, itemName, selectedName, auctionName) {
 }
 
 const WISH_LEGEND = '<p class="wish-legend"><span class="wish-star">★</span> このアイテムを希望しているメンバー</p>';
+const NEXT_LEGEND = '<p class="wish-legend">担当の候補は割り当ての優先順に並びます。（次点）＝次に回ってくる人</p>';
 const NONWISHER_LEGEND = '<p class="wish-legend"><span class="nonwisher-swatch"></span> 希望アイテム管理に未登録のメンバー（登録前・削除後の落札）</p>';
 
 // そのアイテムを希望リストに登録しているメンバー名の集合。
@@ -430,6 +431,27 @@ function isPausedAssignment(guild, a, ctx) {
   const auctionName = assignmentAuctionName(guild, a);
   if (auctionName != null && ctx.auctions.has(auctionName)) return true;
   return ctx.keys.has(assignmentItemKey(guild, a));
+}
+
+function findItemForAssignment(guild, a) {
+  const auctionName = assignmentAuctionName(guild, a);
+  return guild.items.find(it =>
+    it.itemName === a.itemName && (it.auctionName || null) === auctionName) || null;
+}
+
+// rows[idx] の枠に入れられる人を、自動割り当てと同じ優先順で返す。
+// 同じアイテムの別の枠をすでに持っている人は除く（1人が同じアイテムを2枠持たないように）。
+// guildView には、判定に使いたい欠席状況を反映した guild を渡す。
+function substituteCandidates(guildView, week, rows, idx) {
+  const a = rows[idx];
+  const item = findItemForAssignment(guildView, a);
+  if (!item) return [];
+  const key = assignmentItemKey(guildView, a);
+  const others = rows.filter((_, i) => i !== idx);
+  const sameItemHolders = others
+    .filter(o => o.memberName && assignmentItemKey(guildView, o) === key)
+    .map(o => o.memberName);
+  return [...new Set(rankCandidates(guildView, week, item, others, sameItemHolders))];
 }
 
 // 休止中の割り当てを除いた配列を返す。
@@ -534,9 +556,14 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
     const dateStr = auctionDateLabelInWeek(ae, week);
     // 見出しはコピーボタンの置き場所なので、オークションが1つでも常に出す
     const hasAssigned = rows.some(({ a }) => a.memberName);
+    // 開催日がオークションごとに違うので、全件確認はオークション単位で押せるようにする
+    const hasUnconfirmed = rows.some(({ a }) => !a.confirmed);
     const header = `<div class="auction-group-header">
         <span>${escapeHtml(auctionName || 'その他')}${dateStr ? `<small class="group-date-hint">${escapeHtml(dateStr)}</small>` : ''}</span>
         ${hasAssigned ? `<button class="mail-copy-btn" data-mail-auction="${escapeHtml(auctionName || '')}" data-mail-week="${escapeHtml(week)}" title="メンバーへの連絡文をコピー">コピー</button>` : ''}
+        ${hasUnconfirmed
+          ? `<button class="mail-copy-btn confirm-auction-btn" data-confirm-auction="${escapeHtml(auctionName || '')}" title="このオークションの落札をまとめて記録">全件確認</button>`
+          : '<span class="auction-done-badge">✓ 確認済み</span>'}
       </div>`;
     return header + rows.map(({ a, idx }) => a.confirmed
       ? `<div class="confirm-row confirmed">
@@ -561,7 +588,7 @@ function buildAuctionSectionHTML(week, assignments, members, label, isPast) {
         <span class="auction-date ${isPast ? 'past-warn-label' : ''}">${isPast ? '⚠ ' : ''}${label}</span>
         ${allConfirmed
           ? '<span class="all-confirmed-badge">✓ 全件確認済み</span>'
-          : `<button class="btn-primary btn-sm confirm-all-week-btn" data-week="${week}">全件確認</button>`}
+          : (isPast ? `<button class="btn-primary btn-sm confirm-all-week-btn" data-week="${week}">全件確認</button>` : '')}
       </div>
       <div class="confirm-list">${confirmListHTML}</div>
       ${WISH_LEGEND}
@@ -616,6 +643,26 @@ function bindAuctionSectionEvents(week, assignments) {
       await refreshGuild();
       renderAdminDashboard();
       showToast('落札を記録しました');
+    }));
+  });
+
+  section.querySelectorAll('[data-confirm-auction]').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const auctionName = btn.dataset.confirmAuction || null;
+      const group = groupAssignmentsByAuction(assignments)
+        .find(g => (g.auctionName || null) === auctionName);
+      if (!group) return;
+      // このオークションの行だけ確定する。他のオークションと休止中の行には触らない
+      const targetIdx = new Set(group.rows.map(({ idx }) => idx));
+      const updated = assignments.map((a, idx) => {
+        if (!targetIdx.has(idx)) return a;
+        const sel = section.querySelector(`.confirm-select[data-week="${week}"][data-idx="${idx}"]`);
+        return { ...a, memberName: confirmedWinnerName(sel, a), confirmed: true };
+      });
+      await store.confirmWeekAssignments(session.guildName, week, updated);
+      await refreshGuild();
+      renderAdminDashboard();
+      showToast(`${auctionName || 'その他'} の落札を全件記録しました`);
     }));
   });
 
@@ -678,7 +725,8 @@ function renderAdminDashboard() {
     auctionHTML += `
       <div class="auction-section">
         <div class="auction-header"><span class="auction-date">${formatWeekRange(thisWeek)} 今週のオークション</span></div>
-        <p class="empty-state">まだ割り当てがありません。「自動割り当て」から実行してください。</p>
+        <p class="empty-state">まだ割り当てがありません。</p>
+        <button class="btn-primary dash-assign-btn" data-assign-week="${thisWeek}">今週分を割り当てる</button>
       </div>`;
   } else {
     auctionHTML += buildAuctionSectionHTML(thisWeek, thisWeekAssignments, members, `${formatWeekRange(thisWeek)} 今週のオークション`, false);
@@ -698,7 +746,14 @@ function renderAdminDashboard() {
   // 次週の予定
   // ここは表示専用なので絞った配列をそのまま使ってよい
   const nextWeekAssignments = withoutHiddenAssignments(guild, store.getAssignmentsForWeek(guild, nextWeek));
-  $('dashboard-next').innerHTML = nextWeekAssignments.length === 0 ? '' : `
+  // 今週分が済んでいて次週がまだなら、ここから次週分を作れるようにする（毎週1週ずつ回す運用向け）
+  const thisWeekReady = withoutHiddenAssignments(guild, thisWeekAssignments).length > 0;
+  $('dashboard-next').innerHTML = nextWeekAssignments.length === 0 ? (!thisWeekReady ? '' : `
+    <div class="auction-section next-week">
+      <div class="auction-header"><span class="auction-date next-label">${formatWeekRange(nextWeek)} 次週の予定</span></div>
+      <p class="empty-state">まだ割り当てがありません。</p>
+      <button class="btn-secondary dash-assign-btn" data-assign-week="${nextWeek}">次週分を割り当てる</button>
+    </div>`) : `
     <div class="auction-section next-week">
       <div class="auction-header"><span class="auction-date next-label">${formatWeekRange(nextWeek)} 次週の予定</span></div>
       <div class="next-list">
@@ -709,6 +764,13 @@ function renderAdminDashboard() {
           </div>`).join('')}
       </div>
     </div>`;
+
+  document.querySelectorAll('#view-admin-dashboard .dash-assign-btn').forEach(btn => {
+    btn.addEventListener('click', () => withBusyAction(btn, async () => {
+      const done = await assignSingleWeek(btn.dataset.assignWeek);
+      if (done) renderAdminDashboard();
+    }));
+  });
 
   // アイテム別落札実績（確認済みのみ）
   // winsKey = `${auctionName||''}|${itemName}` で同名別オークションを区別
@@ -1817,6 +1879,33 @@ $('form-add-wishlist-item').addEventListener('submit', e => {
   });
 });
 
+// 欠席申請を承認したときに空く枠と、そこへ入れる次点を決める。
+// 対象の絞り込みは storage.approveRequestAndCancelAssignment と同じ条件に揃えている。
+function planAbsenceSubstitutes(guild, unavailId, memberName, week, auctionName) {
+  // 承認後の欠席状況で候補を選ぶ（本人が候補に戻ってこないように）
+  const view = {
+    ...guild,
+    unavailableWeeks: guild.unavailableWeeks.map(u => (u.id === unavailId ? { ...u, status: 'approved' } : u)),
+  };
+  const pauseCtx = pauseContext(guild);
+  const rows = store.getAssignmentsForWeek(guild, week).map(a => ({ ...a }));
+  const fills = [];
+  let vacated = 0;
+  rows.forEach((a, idx) => {
+    if (a.memberName !== memberName || a.confirmed === true) return;
+    if (auctionName && (a.auctionName !== undefined ? (a.auctionName || null) : null) !== auctionName) return;
+    a.memberName = null;
+    // 休止中のアイテムは開催されないので補充しない
+    if (isPausedAssignment(guild, a, pauseCtx)) return;
+    vacated++;
+    const next = substituteCandidates(view, week, rows, idx)[0] || null;
+    if (!next) return;
+    a.memberName = next;
+    fills.push({ itemName: a.itemName, auctionName: a.auctionName, slotNo: a.slotNo, memberName: next });
+  });
+  return { fills, vacated };
+}
+
 // --- 管理者：申請管理 ---
 
 function renderRequestManagement() {
@@ -1857,7 +1946,7 @@ function renderRequestManagement() {
       const assignmentInfo = hasConfirmed
         ? `<div class="req-assignment-warn req-assignment-confirmed">⚠ 落札確認済みの担当あり: ${targetAssignments.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('・')} → 承認しても確認済み記録は変更されません。カレンダーから手動で変更してください。</div>`
         : hasUnconfirmed
-          ? `<div class="req-assignment-warn">⚠ 担当あり: ${targetAssignments.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('・')} → 承認すると取消になります</div>`
+          ? `<div class="req-assignment-warn">⚠ 担当あり: ${targetAssignments.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('・')} → 承認すると次点の人に交代します（候補がいなければ未割当）</div>`
           : '<div class="req-assignment-ok">担当なし（割当取消は不要）</div>';
       const auctionLabel = u.auctionName ? `<span class="req-auction-badge">${escapeHtml(u.auctionName)}</span>` : '<span class="req-auction-badge all">全オークション</span>';
       return `
@@ -1871,7 +1960,7 @@ function renderRequestManagement() {
           ${u.reason ? `<div class="req-reason">理由: ${escapeHtml(u.reason)}</div>` : ''}
           ${assignmentInfo}
           <div class="req-actions">
-            <button class="btn-approve" data-id="${escapeHtml(u.id)}" data-member="${escapeHtml(u.memberName)}" data-week="${escapeHtml(u.week)}" data-auction-name="${escapeHtml(u.auctionName || '')}" data-has-assign="${hasUnconfirmed}">承認${hasUnconfirmed ? '・割当取消' : ''}</button>
+            <button class="btn-approve" data-id="${escapeHtml(u.id)}" data-member="${escapeHtml(u.memberName)}" data-week="${escapeHtml(u.week)}" data-auction-name="${escapeHtml(u.auctionName || '')}" data-has-assign="${hasUnconfirmed}">承認${hasUnconfirmed ? '・次点に交代' : ''}</button>
             <button class="btn-reject" data-id="${escapeHtml(u.id)}">拒否</button>
           </div>
         </div>`;
@@ -1900,14 +1989,21 @@ function renderRequestManagement() {
   // 承認ボタン
   $('request-list').querySelectorAll('.btn-approve').forEach(btn => {
     btn.addEventListener('click', () => withBusyAction(btn, async () => {
-      // approveとassignment cancel をアトミックに1回のFirestore書き込みで実行
+      const auctionName = btn.dataset.auctionName || null;
+      // 空く枠に入れる次点を先に決めておき、承認・取消・補充を1回の書き込みで行う
+      const { fills, vacated } = planAbsenceSubstitutes(
+        currentGuild, btn.dataset.id, btn.dataset.member, btn.dataset.week, auctionName
+      );
       await store.approveRequestAndCancelAssignment(
         session.guildName, btn.dataset.id, btn.dataset.member, btn.dataset.week,
-        btn.dataset.auctionName || null
+        auctionName, fills
       );
       await refreshGuild();
       renderRequestManagement();
-      showToast('申請を承認しました');
+      const unfilled = vacated - fills.length;
+      showToast(vacated === 0
+        ? '申請を承認しました'
+        : `申請を承認しました。${fills.length}枠を次点の人に交代しました${unfilled > 0 ? `（${unfilled}枠は候補がおらず未割当）` : ''}`);
     }));
   });
 
@@ -2205,27 +2301,41 @@ $('form-auto-assign').addEventListener('submit', e => {
   withBusyButton(e.target, async () => {
     const week = $('assign-week').value.trim();
     if (!week) return;
-    const guild = currentGuild;
-    if (visibleMembers(guild).length === 0 || guild.items.length === 0) {
-      showToast('メンバーとアイテムを登録してから実行してください');
-      return;
-    }
-    const futureWeeks = [...new Set(
-      guild.assignments.filter(a => a.week > week).map(a => a.week)
-    )].sort();
-    if (futureWeeks.length > 0) {
-      const msg = `この週を再実行すると、以降の ${futureWeeks.length} 週分の割り当て（${futureWeeks[0]} 〜 ${futureWeeks[futureWeeks.length - 1]}）がクリアされます。続けますか？`;
-      if (!confirm(msg)) return;
-    }
-    const result = generateWeekAssignments(guild, week);
-    await store.applyWeekAssignments(session.guildName, week, result);
-    await refreshGuild();
+    const result = await assignSingleWeek(week);
+    if (!result) return;
     updateBulkAssignedStatus();
     updateSingleAssignedStatus(week);
     renderAssignResult(result.assignments);
-    showToast(`${formatSunday(week)} の割り当てを実行しました`);
   });
 });
+
+// 1週分の自動割り当てを実行する。実行したら結果を、取りやめたら null を返す。
+// その週と以降の週の割り当てを作り直すため、消えるものがあるときは必ず確認を挟む。
+async function assignSingleWeek(week) {
+  const guild = currentGuild;
+  if (visibleMembers(guild).length === 0 || guild.items.length === 0) {
+    showToast('メンバーとアイテムを登録してから実行してください');
+    return null;
+  }
+  const confirmedCount = guild.assignments
+    .filter(a => a.week === week && a.memberName && a.confirmed === true).length;
+  if (confirmedCount > 0) {
+    const msg = `この週には落札確認済みの記録が ${confirmedCount} 件あります。再実行するとその記録も消えます。続けますか？`;
+    if (!confirm(msg)) return null;
+  }
+  const futureWeeks = [...new Set(
+    guild.assignments.filter(a => a.week > week).map(a => a.week)
+  )].sort();
+  if (futureWeeks.length > 0) {
+    const msg = `この週を再実行すると、以降の ${futureWeeks.length} 週分の割り当て（${futureWeeks[0]} 〜 ${futureWeeks[futureWeeks.length - 1]}）がクリアされます。続けますか？`;
+    if (!confirm(msg)) return null;
+  }
+  const result = generateWeekAssignments(guild, week);
+  await store.applyWeekAssignments(session.guildName, week, result);
+  await refreshGuild();
+  showToast(`${formatSunday(week)} の割り当てを実行しました`);
+  return result;
+}
 
 function renderAssignResult(assignments) {
   $('assign-result-body').innerHTML = assignments.map(a => `
@@ -2252,31 +2362,66 @@ function initCalendarState(week) {
   const assignments = withoutHiddenAssignments(guild, store.getAssignmentsForWeek(guild, week))
     .map(a => ({ ...a }));
   // manualOverrides: ユーザーが手動で変更したスロットを記録する Map<idx, memberName|null>
-  // トグルで再計算しても手動変更が消えないようにここで保持する
-  calendarState = { week, localAbsent: absentThisWeek, originalAbsent: new Set(absentThisWeek), assignments, dirty: false, manualOverrides: new Map() };
+  // substitutions:   欠席トグルで自動的に差し替えた枠 Map<idx, { from, to }>。
+  //                  欠席を取り消したとき、元の担当に戻すために覚えておく。
+  calendarState = { week, localAbsent: absentThisWeek, originalAbsent: new Set(absentThisWeek), assignments, dirty: false, manualOverrides: new Map(), substitutions: new Map() };
 }
 
-function recalcCalendar() {
+// カレンダーで編集中（未保存）の欠席状況を反映した guild。次点の計算に使う。
+function calendarGuildView() {
   const guild = currentGuild;
-  // 参加状況のみ差し替えてローテーションを再計算（ポインタは変更しない）
-  const modifiedGuild = {
+  return {
     ...guild,
     unavailableWeeks: [
       ...guild.unavailableWeeks.filter(u => u.week !== calendarState.week),
       ...[...calendarState.localAbsent].map(memberName => ({ memberName, week: calendarState.week, reason: '' })),
     ],
   };
-  // generateWeekAssignments も休止中アイテムを作らないので、可視行だけが並ぶ。
-  // initCalendarState と件数・並びが揃うため manualOverrides の添字がずれない。
-  const result = generateWeekAssignments(modifiedGuild, calendarState.week);
-  calendarState.assignments = result.assignments;
+}
 
-  // 手動変更を再適用する（ただし不参加にしたメンバーへの割り当ては除外）
-  calendarState.manualOverrides.forEach((memberName, idx) => {
-    if (calendarState.assignments[idx] && !calendarState.localAbsent.has(memberName)) {
-      calendarState.assignments[idx].memberName = memberName || null;
-    }
+function calendarCandidates(idx) {
+  return substituteCandidates(calendarGuildView(), calendarState.week, calendarState.assignments, idx);
+}
+
+// 欠席の切り替えを担当表に反映する。
+// 以前は週全体を計算し直していたが、1人抜けただけで他の人の担当まで玉突きで変わり、
+// 落札確認済みの記録も未確認に戻ってしまっていた。
+// いまは欠席した人の枠だけを次点の人に差し替え、それ以外の枠には触らない。
+function applyAbsenceToggle(name, nowAbsent) {
+  const rows = calendarState.assignments;
+  if (nowAbsent) {
+    rows.forEach((a, idx) => {
+      // 確認済みは実際に落札した記録なので動かさない
+      if (a.memberName !== name || a.confirmed === true) return;
+      a.memberName = null;
+      const next = calendarCandidates(idx)[0] || null;
+      a.memberName = next;
+      calendarState.substitutions.set(idx, { from: name, to: next });
+    });
+    return;
+  }
+  // 欠席を取り消したら、自動で差し替えた枠を元の担当に戻す。
+  // 差し替えたあとに手で別の人へ変えられていた枠は、その判断を優先して触らない。
+  calendarState.substitutions.forEach((sub, idx) => {
+    if (sub.from !== name) return;
+    const a = rows[idx];
+    if (a && a.memberName === sub.to && a.confirmed !== true) a.memberName = name;
+    calendarState.substitutions.delete(idx);
   });
+}
+
+// 担当変更のプルダウン。現在の担当 → 優先順の候補 → それ以外、の順に並べ、
+// 先頭の候補に「次点」と付ける（誰に替えるのが妥当かをその場で判断できるように）。
+function calendarMemberOptions(idx, a, sortedMembers) {
+  const ranked = calendarCandidates(idx).filter(n => n !== a.memberName);
+  const rankedSet = new Set(ranked);
+  const byName = new Map(sortedMembers.map(m => [m.name, m]));
+  const ordered = [
+    ...(a.memberName && byName.has(a.memberName) ? [byName.get(a.memberName)] : []),
+    ...ranked.map(n => byName.get(n)).filter(Boolean),
+    ...sortedMembers.filter(m => m.name !== a.memberName && !rankedSet.has(m.name)),
+  ];
+  return memberOptions(ordered, a.itemName, a.memberName, a.auctionName, ranked[0]);
 }
 
 function renderCalendar() {
@@ -2307,9 +2452,10 @@ function renderCalendar() {
     statusEl.querySelectorAll('[data-member]').forEach(btn => {
       btn.addEventListener('click', () => {
         const name = btn.dataset.member;
-        if (calendarState.localAbsent.has(name)) calendarState.localAbsent.delete(name);
-        else calendarState.localAbsent.add(name);
-        recalcCalendar();
+        const nowAbsent = !calendarState.localAbsent.has(name);
+        if (nowAbsent) calendarState.localAbsent.add(name);
+        else calendarState.localAbsent.delete(name);
+        applyAbsenceToggle(name, nowAbsent);
         const orig = calendarState.originalAbsent;
         const sameAsOriginal = calendarState.localAbsent.size === orig.size &&
           [...calendarState.localAbsent].every(n => orig.has(n));
@@ -2340,7 +2486,7 @@ function renderCalendar() {
         const cell = session.role === 'admin'
           ? `<select class="calendar-member-select" data-idx="${idx}">
                <option value="">（未割当）</option>
-               ${memberOptions(sortedMembers, a.itemName, a.memberName, a.auctionName)}
+               ${calendarMemberOptions(idx, a, sortedMembers)}
              </select>`
           : `<span class="${isMine ? 'calendar-mine-name' : ''}">${escapeHtml(a.memberName) || '（未割当）'}</span>`;
         return `<tr class="${isMine ? 'calendar-mine-row' : ''}"><td>${escapeHtml(assignmentDisplayLabel(a))}</td><td>${slotMark(a.slotNo)}</td><td>${cell}</td></tr>`;
@@ -2356,7 +2502,7 @@ function renderCalendar() {
         const idx = +sel.dataset.idx;
         const memberName = sel.value || null;
         calendarState.assignments[idx].memberName = memberName;
-        calendarState.manualOverrides.set(idx, memberName); // 手動変更を記録してトグル再計算でも保持
+        calendarState.manualOverrides.set(idx, memberName); // 手動変更を記録（未保存の判定に使う）
         calendarState.dirty = true;
         updateCalendarSaveBar();
       });
@@ -2378,7 +2524,7 @@ function renderCalendar() {
       });
       const legendEl = document.querySelector('#view-calendar .wish-legend');
       if (!legendEl && hasWishers) {
-        $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND);
+        $('calendar-table-body').closest('table').insertAdjacentHTML('afterend', WISH_LEGEND + NEXT_LEGEND);
       }
     }
   }

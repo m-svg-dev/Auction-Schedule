@@ -1293,3 +1293,9 @@ button:disabled {
   color: #7a5c00;
 }
 .wins-name .badge-paused { margin-left: 4px; padding: 0 5px; font-size: .62rem; }
+
+/* --- オークション単位の全件確認・ホームからの割り当て --- */
+.confirm-auction-btn { background: var(--color-purple); color: #fff; }
+.confirm-auction-btn:active { background: #fff; color: var(--color-purple); }
+.auction-done-badge { font-size: 0.68rem; font-weight: normal; letter-spacing: 0; color: #2e7d32; white-space: nowrap; flex-shrink: 0; }
+.dash-assign-btn { margin-top: 8px; }
