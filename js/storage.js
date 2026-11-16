@@ -107,7 +107,7 @@ async function updateGuild(guildName, updater) {
 export function addMember(guildName, name) {
   return updateGuild(guildName, guild => {
     const maxOrder = guild.members.reduce((max, m) => Math.max(max, m.orderNo), 0);
-    guild.members.push({ id: newId(), name, orderNo: maxOrder + 1, shortName: '' });
+    guild.members.push({ id: newId(), name, orderNo: maxOrder + 1, shortName: '', hidden: false });
   });
 }
 
@@ -138,6 +138,22 @@ export function deleteMember(guildName, memberId) {
       guild.winAdjustments = (guild.winAdjustments || []).filter(a => a.memberName !== member.name);
       guild.winBaselines = (guild.winBaselines || []).filter(b => b.memberName !== member.name);
     }
+  });
+}
+
+// 休止（hidden）: メンバーを消さずに、割り当て対象から一時的に外す。
+// 長期離脱などで使う。希望アイテムの登録はそのまま残るので、再開すれば元通りになる。
+// fromWeek 以降の「未確認」の担当は未割当に戻す（休止したのに担当が残るのを防ぐ）。
+// 確認済み（実際に落札した記録）と過去の週は触らない。
+export function setMemberHidden(guildName, memberId, hidden, fromWeek) {
+  return updateGuild(guildName, guild => {
+    const m = guild.members.find(mm => mm.id === memberId);
+    if (!m) return;
+    m.hidden = hidden === true;
+    if (!m.hidden || !fromWeek) return;
+    guild.assignments
+      .filter(a => a.week >= fromWeek && a.memberName === m.name && a.confirmed !== true)
+      .forEach(a => { a.memberName = null; a.confirmed = false; });
   });
 }
 

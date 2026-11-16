@@ -349,8 +349,10 @@ function memberOptions(members, itemName, selectedName, auctionName) {
       }
       return w.itemName === itemName;
     });
-    const label = isWisher ? `★ ${escapeHtml(m.name)}` : escapeHtml(m.name);
-    const style = isWisher ? ' style="color:#7c4dff;font-weight:bold"' : '';
+    // 休止中でも、たまたま落札することはあるので選べるようにしておく
+    const suffix = m.hidden ? '（休止中）' : '';
+    const label = (isWisher ? `★ ${escapeHtml(m.name)}` : escapeHtml(m.name)) + suffix;
+    const style = isWisher && !m.hidden ? ' style="color:#7c4dff;font-weight:bold"' : '';
     return `<option value="${escapeHtml(m.name)}"${style} ${m.name === selectedName ? 'selected' : ''}>${label}</option>`;
   }).join('');
 }
@@ -373,6 +375,16 @@ function getWisherNames(guild, item) {
 // --- 休止中アイテム ---
 // 削除せず、割り当て・落札確認・落札実績から一時的に外すだけの状態。
 // assignments 側はアイテムIDを持たないので auctionName + itemName の複合キーで突き合わせる。
+
+// 休止中のメンバー。割り当て対象から外れるが、希望リストと落札実績は残る。
+function visibleMembers(guild) {
+  return guild.members.filter(m => !m.hidden);
+}
+
+function isMemberHidden(guild, name) {
+  const m = guild.members.find(mm => mm.name === name);
+  return !!(m && m.hidden);
+}
 
 function hiddenAuctionNames(guild) {
   return new Set((guild.auctionEvents || []).filter(ae => ae.hidden).map(ae => ae.name));
@@ -633,7 +645,7 @@ function renderAdminDashboard() {
   // 統計カード（小さく3つ横並び）
   const unavailableThisWeek = guild.unavailableWeeks.filter(u => u.week === thisWeek).length;
   $('dashboard-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-val">${guild.members.length}</div><div class="stat-label">メンバー</div></div>
+    <div class="stat-card"><div class="stat-val">${visibleMembers(guild).length}</div><div class="stat-label">メンバー</div></div>
     <div class="stat-card"><div class="stat-val">${visibleItems(guild).length}</div><div class="stat-label">アイテム</div></div>
     <div class="stat-card"><div class="stat-val">${unavailableThisWeek}</div><div class="stat-label">今週欠席</div></div>
   `;
@@ -755,6 +767,8 @@ function renderAdminDashboard() {
           delta,
           total: count + delta,
           flagNonWisher: count > 0 && !wisherNames.has(m.name),
+          // 休止中でも実績は実際にあったことなので消さず、印だけ付ける
+          paused: m.hidden === true,
         };
       })
       // 編集中は補正を掛ける相手を選べるよう全員出す。通常は実績か補正がある人だけ。
@@ -834,7 +848,7 @@ function winsRowHTML(item, r, editing, maxTotal) {
     : (r.delta ? `実績${r.count} ${deltaLabel(r.delta)}` : '&nbsp;');
   return `
     <div class="wins-row${r.flagNonWisher ? ' wins-row-nonwisher' : ''}${editing ? ' wins-row-editing' : ''}" ${attrs}${r.flagNonWisher ? ' title="希望アイテム管理に未登録"' : ''}>
-      <span class="wins-name">${escapeHtml(r.name)}</span>
+      <span class="wins-name">${escapeHtml(r.name)}${r.paused ? '<span class="badge-paused">休止</span>' : ''}</span>
       ${middle}
       <span class="wins-col"><b>${r.total}回</b><small>${sub}</small></span>
     </div>`;
@@ -991,7 +1005,8 @@ function renderMemberManagement() {
     const li = document.createElement('li');
     li.draggable = true;
     li.dataset.id = m.id;
-    li.innerHTML = `<span><span class="order-no">${m.orderNo}.</span>${escapeHtml(m.name)}</span>`;
+    if (m.hidden) li.className = 'member-row-hidden';
+    li.innerHTML = `<span><span class="order-no">${m.orderNo}.</span>${escapeHtml(m.name)}${m.hidden ? '<span class="badge-paused">休止中</span>' : ''}</span>`;
 
     const actions = document.createElement('span');
     actions.className = 'member-actions';
@@ -1001,6 +1016,20 @@ function renderMemberManagement() {
     editBtn.textContent = '変更';
     editBtn.addEventListener('click', () => enterMemberEditMode(li, m));
     actions.appendChild(editBtn);
+
+    const pauseBtn = document.createElement('button');
+    pauseBtn.className = 'btn-secondary btn-pause';
+    pauseBtn.textContent = m.hidden ? '再開' : '休止';
+    pauseBtn.addEventListener('click', () => withBusyAction(pauseBtn, async () => {
+      const next = !m.hidden;
+      await store.setMemberHidden(session.guildName, m.id, next, getCurrentWeek());
+      await refreshGuild();
+      renderMemberManagement();
+      showToast(next
+        ? `${m.name} を休止しました。今週以降の未確認の担当は未割当に戻しました（希望アイテムは残ります）`
+        : `${m.name} を再開しました。次回の自動割り当てから対象に戻ります`);
+    }));
+    actions.appendChild(pauseBtn);
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-danger';
@@ -1481,7 +1510,7 @@ function renderMailNameManagement() {
   $('mail-name-members').innerHTML = `
     <h3 class="mail-section-title">メンバー</h3>
     <p class="mail-section-sub">全オークション共通です。1回設定すればどこでも効きます。</p>
-    ${members.map(m => mailNameRowHTML('member', m.id, m.name, m.shortName, true, false, '')).join('')}`;
+    ${members.map(m => mailNameRowHTML('member', m.id, m.name, m.shortName, !m.hidden, !!m.hidden, m.hidden ? '休止中' : '')).join('')}`;
 
   bindMailNameEvents();
   updateMailNameSaveBar();
@@ -1642,8 +1671,9 @@ function renderWishlistManagement() {
   if (!selectedWishlistMember || !members.some(m => m.name === selectedWishlistMember)) {
     selectedWishlistMember = members[0].name;
   }
+  // 休止中でも希望アイテムは編集できる（休止しても登録は消さない方針のため）
   memberSelect.innerHTML = members
-    .map(m => `<option value="${m.name}" ${m.name === selectedWishlistMember ? 'selected' : ''}>${m.name}</option>`)
+    .map(m => `<option value="${m.name}" ${m.name === selectedWishlistMember ? 'selected' : ''}>${m.name}${m.hidden ? '（休止中）' : ''}</option>`)
     .join('');
 
   renderWishlistList();
@@ -1896,7 +1926,8 @@ function renderRequestManagement() {
 
 function renderUnavailableManagement() {
   const guild = currentGuild;
-  $('unavailable-member').innerHTML = guild.members
+  // 休止中のメンバーは欠席連絡の対象にならない
+  $('unavailable-member').innerHTML = visibleMembers(guild)
     .sort((a, b) => a.orderNo - b.orderNo)
     .map(m => `<option value="${m.name}">${m.name}</option>`)
     .join('');
@@ -2127,7 +2158,7 @@ $('form-bulk-assign').addEventListener('submit', e => {
     const weekCount = parseInt($('bulk-weeks-count').value, 10);
     if (!weekCount || weekCount < 1) return;
     const guild = currentGuild;
-    if (guild.members.length === 0 || guild.items.length === 0) {
+    if (visibleMembers(guild).length === 0 || guild.items.length === 0) {
       showToast('メンバーとアイテムを登録してから実行してください');
       return;
     }
@@ -2175,7 +2206,7 @@ $('form-auto-assign').addEventListener('submit', e => {
     const week = $('assign-week').value.trim();
     if (!week) return;
     const guild = currentGuild;
-    if (guild.members.length === 0 || guild.items.length === 0) {
+    if (visibleMembers(guild).length === 0 || guild.items.length === 0) {
       showToast('メンバーとアイテムを登録してから実行してください');
       return;
     }
@@ -2262,7 +2293,8 @@ function renderCalendar() {
   const statusEl = $('calendar-member-status');
   if (session.role === 'admin') {
     statusEl.classList.remove('hidden');
-    const members = [...currentGuild.members].sort((a, b) => a.orderNo - b.orderNo);
+    // 休止中のメンバーは欠席の管理対象にならないので出さない
+    const members = visibleMembers(currentGuild).sort((a, b) => a.orderNo - b.orderNo);
     statusEl.innerHTML = members.length === 0 ? '' : `
       <div class="calendar-status-label">この週の参加状況（タップで切替）</div>
       <div class="calendar-member-toggles">
@@ -2430,7 +2462,9 @@ function renderMemberHome() {
   const thisWeekMine = all.filter(a => a.week === thisWeek);
   const upcoming = all.filter(a => a.week >= thisWeek);
 
+  const mePaused = isMemberHidden(currentGuild, session.memberName);
   $('member-home-cards').innerHTML = `
+    ${mePaused ? '<p class="member-paused-note">現在「休止中」に設定されています。オークションの割り当て対象から外れています。希望アイテムの登録はそのまま残っているので、再開すれば元に戻ります。</p>' : ''}
     <div class="card gold">
       <div class="label">今週の担当 ${formatWeekRange(thisWeek)}</div>
       <div class="value value-text">${thisWeekMine.length ? thisWeekMine.map(a => `${escapeHtml(assignmentDisplayLabel(a))}${slotMark(a.slotNo)}`).join('<br>') : 'なし'}</div>
