@@ -373,7 +373,9 @@ export function approveRequest(guildName, unavailId) {
 
 // approveRequest + cancelMemberAssignment を1回の Firestore 書き込みでアトミックに実行
 // auctionName が指定されている場合はそのオークションの担当のみ取消
-export function approveRequestAndCancelAssignment(guildName, unavailId, memberName, week, auctionName) {
+// fills: 空いた枠に入れる次点 [{ itemName, auctionName, slotNo, memberName }]。
+//        空いている枠にだけ入れる（別の端末で先に誰かが埋めていたら上書きしない）。
+export function approveRequestAndCancelAssignment(guildName, unavailId, memberName, week, auctionName, fills = []) {
   return updateGuild(guildName, guild => {
     const u = guild.unavailableWeeks.find(w => w.id === unavailId);
     if (u) { u.status = 'approved'; u.reviewedAt = new Date().toISOString(); }
@@ -385,6 +387,12 @@ export function approveRequestAndCancelAssignment(guildName, unavailId, memberNa
         return aAuction === auctionName;
       })
       .forEach(a => { a.memberName = null; a.confirmed = false; });
+    fills.forEach(f => {
+      const slot = guild.assignments.find(a =>
+        a.week === week && a.itemName === f.itemName && a.slotNo === f.slotNo &&
+        (a.auctionName ?? null) === (f.auctionName ?? null));
+      if (slot && !slot.memberName) slot.memberName = f.memberName;
+    });
   });
 }
 

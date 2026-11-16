@@ -41,7 +41,7 @@ function check(label, actual, expected) {
 }
 const section = name => console.log(`\n${name}`);
 
-const { generateWeekAssignments } = await import(srcUrl('js/rotation.js'));
+const { generateWeekAssignments, rankCandidates } = await import(srcUrl('js/rotation.js'));
 const appSrc = read('js/app.js');
 const storageSrc = read('js/storage.js');
 
@@ -126,6 +126,41 @@ check('同名アイテムの落札数をオークションをまたいで合算�
   generateWeekAssignments(guildOf([swordR3, swordK], { assignments: evenTotals }), TARGET)
     .assignments.filter(a => a.auctionName === '領地').map(a => a.memberName), ['A', 'B', 'C']);
 
+// --- 1枠だけの差し替え（次点） ----------------------------------------------
+section('1枠だけの差し替え（次点）');
+const SIX = ['A', 'B', 'C', 'D', 'E', 'F'].map((n, i) => M(n, i + 1));
+const subItems = [
+  { id: 'i1', itemName: '勲章', slotCount: 1, auctionName: '領地' },
+  { id: 'i2', itemName: '聖痕', slotCount: 2, auctionName: '領地' },
+  { id: 'i3', itemName: '書籍', slotCount: 2, auctionName: '海島' },
+];
+const subGuild = (extra = {}) => guildOf(subItems, { members: SIX, ...extra });
+const baseWeek = generateWeekAssignments(subGuild(), TARGET).assignments;
+check('前提: 5枠が A〜E に1枠ずつ入る', baseWeek.map(a => a.memberName), ['A', 'B', 'C', 'D', 'E']);
+
+// B（聖痕①）が欠席。週全体を作り直すと4枠変わるが、差し替えなら B の枠だけが変わる。
+const absentB = { unavailableWeeks: [{ memberName: 'B', week: TARGET, status: 'approved' }] };
+const regenerated = generateWeekAssignments(subGuild(absentB), TARGET).assignments.map(a => a.memberName);
+check('（参考）週全体を作り直すと玉突きで4枠変わる',
+  regenerated.filter((n, i) => n !== baseWeek[i].memberName).length, 4);
+
+const othersOfB = baseWeek.filter((_, i) => i !== 1);
+const candidates = rankCandidates(subGuild(absentB), TARGET, subItems[1], othersOfB, ['C']);
+check('次点はまだ枠を持っていない F', candidates[0], 'F');
+check('欠席した本人は候補に入らない', candidates.includes('B'), false);
+check('同じアイテムの別枠を持つ人は候補に入らない', candidates.includes('C'), false);
+check('休止中のメンバーは候補に入らない',
+  rankCandidates(subGuild({ ...absentB, members: SIX.map(m => (m.name === 'F' ? { ...m, hidden: true } : m)) }),
+    TARGET, subItems[1], othersOfB, ['C']).includes('F'), false);
+check('落札数の少ない人が先に来る（Fに確認済み2回 → Fは後ろ）',
+  rankCandidates(subGuild({
+    ...absentB,
+    assignments: [1, 2].map(w => ({ week: W(w), itemName: '聖痕', auctionName: '領地', slotNo: 1, memberName: 'F', confirmed: true })),
+  }), TARGET, subItems[1], othersOfB, ['C'])[0] !== 'F', true);
+check('候補がいなければ空（希望者が欠席者だけ）',
+  rankCandidates({ ...subGuild(absentB), wishlists: [{ id: 'w', memberName: 'B', itemId: 'i2', itemName: '聖痕', rank: 1 }] },
+    TARGET, subItems[1], othersOfB, []), []);
+
 // --- 保存処理 ---------------------------------------------------------------
 section('保存処理（storage.js）');
 const S = await loadModule(`
@@ -140,9 +175,38 @@ ${extractFn(storageSrc, 'appendMissingItemsToAssignments')}
 ${extractFn(storageSrc, 'getWinBaseline')}
 ${extractFn(storageSrc, 'setWinRecord')}
 ${extractFn(storageSrc, 'saveShortNames')}
+${extractFn(storageSrc, 'approveRequestAndCancelAssignment')}
 export { setMemberHidden, setItemHidden, setAuctionHidden, deleteAuctionEvent,
-         appendMissingItemsToAssignments, getWinBaseline, setWinRecord, saveShortNames };
+         appendMissingItemsToAssignments, getWinBaseline, setWinRecord, saveShortNames,
+         approveRequestAndCancelAssignment };
 `);
+
+const approveGuild = () => ({
+  unavailableWeeks: [{ id: 'u1', memberName: 'B', week: W(45), status: 'pending' }],
+  assignments: [
+    { week: W(45), itemName: '聖痕', auctionName: '領地', slotNo: 1, memberName: 'B', confirmed: false },
+    { week: W(45), itemName: '聖痕', auctionName: '領地', slotNo: 2, memberName: 'C', confirmed: false },
+    { week: W(45), itemName: '書籍', auctionName: '海島', slotNo: 1, memberName: 'B', confirmed: true },
+    { week: W(45), itemName: '勲章', auctionName: '領地', slotNo: 1, memberName: null, confirmed: false },
+  ],
+});
+const apg = approveGuild();
+S.approveRequestAndCancelAssignment(apg, 'u1', 'B', W(45), null,
+  [{ itemName: '聖痕', auctionName: '領地', slotNo: 1, memberName: 'F' }]);
+check('欠席承認で空いた枠に次点が入る', apg.assignments[0].memberName, 'F');
+check('承認済みになる', apg.unavailableWeeks[0].status, 'approved');
+check('確認済みの落札記録は交代しない', apg.assignments[2].memberName, 'B');
+check('関係ない枠（他の人・未割当）は変わらない',
+  [apg.assignments[1].memberName, apg.assignments[3].memberName], ['C', null]);
+
+const apg2 = approveGuild();
+S.approveRequestAndCancelAssignment(apg2, 'u1', 'B', W(45), null);
+check('次点の指定が無ければ従来どおり未割当に戻すだけ', apg2.assignments[0].memberName, null);
+
+const apg3 = approveGuild();
+S.approveRequestAndCancelAssignment(apg3, 'u1', 'B', W(45), null,
+  [{ itemName: '聖痕', auctionName: '領地', slotNo: 2, memberName: 'F' }]);
+check('すでに誰かが入っている枠は上書きしない', apg3.assignments[1].memberName, 'C');
 
 const memberGuild = () => ({
   members: [M('A', 1), M('B', 2)],

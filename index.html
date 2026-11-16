@@ -181,7 +181,21 @@
       <h2>自動割り当て</h2>
 
       <div class="assign-block">
-        <h3>一括実行（おすすめ）</h3>
+        <h3>1週分を実行</h3>
+        <p class="hint">選んだ週の割り当てを作ります。今週分・次週分はホームのボタンからも実行できます。</p>
+        <div id="single-assigned-status"></div>
+        <form id="form-auto-assign" class="inline-form">
+          <label>対象週 <select id="assign-week" required></select></label>
+          <button type="submit" class="btn-primary">実行</button>
+        </form>
+        <table class="data-table">
+          <thead><tr><th>アイテム枠</th><th>担当</th></tr></thead>
+          <tbody id="assign-result-body"></tbody>
+        </table>
+      </div>
+
+      <div class="assign-block">
+        <h3>複数週をまとめて実行</h3>
         <p class="hint">今週の日曜日から指定した週数分をまとめて割り当てます。メンバー人数分でちょうど1周する週数を入れると均等になります。</p>
         <div id="bulk-assigned-status"></div>
         <p id="bulk-assign-range-label" class="assign-range-label"></p>
@@ -199,20 +213,6 @@
         <p class="hint">割り当て済みの週に、まだ含まれていないアイテムを「未割当」の状態で追加します。欠席状況や既存の割り当ては変わりません。カレンダーから手動で担当を割り振れます。</p>
         <div id="diff-assign-status"></div>
         <button id="diff-assign-btn" class="btn-primary hidden">未割当で追加</button>
-      </div>
-
-      <div class="assign-block">
-        <h3>特定の週を実行</h3>
-        <p class="hint">1週分だけ指定して実行したい場合に使います。</p>
-        <div id="single-assigned-status"></div>
-        <form id="form-auto-assign" class="inline-form">
-          <label>対象週 <select id="assign-week" required></select></label>
-          <button type="submit" class="btn-primary">実行</button>
-        </form>
-        <table class="data-table">
-          <thead><tr><th>アイテム枠</th><th>担当</th></tr></thead>
-          <tbody id="assign-result-body"></tbody>
-        </table>
       </div>
     </section>
 

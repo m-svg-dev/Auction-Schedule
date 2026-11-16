@@ -14,7 +14,11 @@
 //    ダッシュボードの「アイテム別落札実績（確認済み）」と母数を揃え、
 //    画面に見えている数字と割り当て計算の数字を一致させるため。
 //    （複数週をまとめて生成するときは app.js 側で生成済み週を確認済み扱いにして積み上げる）
-export function generateWeekAssignments(guild, week) {
+
+// 順位付けに必要な材料を1回だけ組み立てる。
+// 週の一括生成（generateWeekAssignments）と、1枠だけの差し替え（rankCandidates）で
+// 同じ基準を使うために共通化している。
+function buildContext(guild, week) {
   // 休止中のアイテムは割り当てを作らない。
   // オークションごと休止されている場合は、その配下のアイテムもすべて対象外。
   const hiddenAuctions = new Set(
@@ -66,51 +70,77 @@ export function generateWeekAssignments(guild, week) {
     if (totalWins.has(adj.memberName)) totalWins.set(adj.memberName, totalWins.get(adj.memberName) + adj.delta);
   });
 
+  return { items, memberOrder, hiddenMembers, isUnavailable, isSameItem, adjustments, baselines, totalWins };
+}
+
+// そのアイテムの希望者を優先順に並べる。休止中・欠席の人は含めない。
+function rankForItem(ctx, guild, week, item) {
+  // このアイテム固有の落札回数を集計（連続取得を防ぐ最重要指標）
+  const itemWins = new Map();
+  // 同名アイテムが別オークションにもある場合に落札数が合算されないよう、
+  // auctionName + itemName の複合キーで判定する（ダッシュボード側と同じキー）
+  guild.assignments
+    .filter(a => a.week < week && a.memberName && a.confirmed === true && ctx.isSameItem(a, item))
+    .forEach(a => itemWins.set(a.memberName, (itemWins.get(a.memberName) || 0) + 1));
+  ctx.baselines
+    .filter(b => b.itemId === item.id)
+    .forEach(b => itemWins.set(b.memberName, (itemWins.get(b.memberName) || 0) + b.count));
+  ctx.adjustments
+    .filter(adj => adj.itemId === item.id)
+    .forEach(adj => itemWins.set(adj.memberName, (itemWins.get(adj.memberName) || 0) + adj.delta));
+
+  return guild.wishlists
+    // 新データは itemId で、旧データは itemName でマッチ
+    // 旧データで同名アイテムが複数ある場合は曖昧なため除外（同週多重割り当て防止）
+    .filter(w => {
+      if (w.itemId) return w.itemId === item.id;
+      const sameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
+      return sameNameCount === 1 && w.itemName === item.itemName;
+    })
+    .sort((a, b) => {
+      const iwA = itemWins.get(a.memberName) || 0;
+      const iwB = itemWins.get(b.memberName) || 0;
+      if (iwA !== iwB) return iwA - iwB;            // 1. このアイテムの落札数少ない順
+      const wA = ctx.totalWins.get(a.memberName) || 0;
+      const wB = ctx.totalWins.get(b.memberName) || 0;
+      if (wA !== wB) return wA - wB;                // 2. 全体落札数少ない順
+      if (a.rank !== b.rank) return a.rank - b.rank; // 3. 希望順位高い順
+      return (ctx.memberOrder.get(a.memberName) ?? 0) - (ctx.memberOrder.get(b.memberName) ?? 0); // 4. 登録順
+    })
+    .map(w => w.memberName)
+    .filter(name => !ctx.hiddenMembers.has(name) && !ctx.isUnavailable(name, item.auctionName || null));
+}
+
+export function generateWeekAssignments(guild, week) {
+  const ctx = buildContext(guild, week);
   const result = [];
 
-  for (const item of items) {
-    // このアイテム固有の落札回数を集計（連続取得を防ぐ最重要指標）
-    const itemWins = new Map();
-    // 同名アイテムが別オークションにもある場合に落札数が合算されないよう、
-    // auctionName + itemName の複合キーで判定する（ダッシュボード側と同じキー）
-    guild.assignments
-      .filter(a => a.week < week && a.memberName && a.confirmed === true && isSameItem(a, item))
-      .forEach(a => itemWins.set(a.memberName, (itemWins.get(a.memberName) || 0) + 1));
-    baselines
-      .filter(b => b.itemId === item.id)
-      .forEach(b => itemWins.set(b.memberName, (itemWins.get(b.memberName) || 0) + b.count));
-    adjustments
-      .filter(adj => adj.itemId === item.id)
-      .forEach(adj => itemWins.set(adj.memberName, (itemWins.get(adj.memberName) || 0) + adj.delta));
-
-    const queue = guild.wishlists
-      // 新データは itemId で、旧データは itemName でマッチ
-      // 旧データで同名アイテムが複数ある場合は曖昧なため除外（同週多重割り当て防止）
-      .filter(w => {
-        if (w.itemId) return w.itemId === item.id;
-        const sameNameCount = guild.items.filter(it => it.itemName === item.itemName).length;
-        return sameNameCount === 1 && w.itemName === item.itemName;
-      })
-      .sort((a, b) => {
-        const iwA = itemWins.get(a.memberName) || 0;
-        const iwB = itemWins.get(b.memberName) || 0;
-        if (iwA !== iwB) return iwA - iwB;            // 1. このアイテムの落札数少ない順
-        const wA = totalWins.get(a.memberName) || 0;
-        const wB = totalWins.get(b.memberName) || 0;
-        if (wA !== wB) return wA - wB;                // 2. 全体落札数少ない順
-        if (a.rank !== b.rank) return a.rank - b.rank; // 3. 希望順位高い順
-        return (memberOrder.get(a.memberName) ?? 0) - (memberOrder.get(b.memberName) ?? 0); // 4. 登録順
-      })
-      .map(w => w.memberName)
-      .filter(name => !hiddenMembers.has(name) && !isUnavailable(name, item.auctionName || null));
-
+  for (const item of ctx.items) {
+    const queue = rankForItem(ctx, guild, week, item);
     for (let s = 1; s <= item.slotCount; s++) {
       const assigned = queue[s - 1] ?? null;
       result.push({ week, itemName: item.itemName, auctionName: item.auctionName || null, slotNo: s, memberName: assigned, isCarryOver: false, confirmed: false });
       // 今週分も即座に合計に加算（同一週内の別アイテムでの多重取りを抑制）
-      if (assigned) totalWins.set(assigned, (totalWins.get(assigned) || 0) + 1);
+      if (assigned) ctx.totalWins.set(assigned, (ctx.totalWins.get(assigned) || 0) + 1);
     }
   }
 
   return { assignments: result, updatedPointers: {} };
+}
+
+// 1枠だけ担当を差し替えるときの候補を、自動割り当てと同じ優先順で返す。
+// 欠席が出たときに週全体を作り直すと、関係ない人の担当まで玉突きで変わってしまうため、
+// 空いた枠の「次点」だけを選べるようにしている。
+//   weekAssignments: その週の現在の割り当て（差し替える枠は除いて渡す）。
+//                    すでに別の枠を持っている人は合計に加算し、同じ週の多重取りを抑える。
+//   excludeNames:    候補から外す人（同じアイテムの別の枠を持っている人など）
+export function rankCandidates(guild, week, item, weekAssignments = [], excludeNames = []) {
+  const ctx = buildContext(guild, week);
+  weekAssignments.forEach(a => {
+    if (a.memberName && ctx.totalWins.has(a.memberName)) {
+      ctx.totalWins.set(a.memberName, ctx.totalWins.get(a.memberName) + 1);
+    }
+  });
+  const excluded = new Set(excludeNames);
+  return rankForItem(ctx, guild, week, item).filter(name => !excluded.has(name));
 }
